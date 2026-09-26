@@ -241,20 +241,39 @@
 				bias-pull-down;
 			};
 
-			/* TX gpio26, RX gpio27 (stock qupv3_se14_tx/rx) */
+			/*
+			 * uart14 lanes with the stock qupv3_se14_{cts,rts,tx,
+			 * rx_active} biases: CTS l0 gpio24 no bias, RTS l1 gpio25
+			 * pull-down, TX l2 gpio26 pull-up, RX l3 gpio27 no bias.
+			 */
 			qup_uart14_default_ml: qup-uart14-default-state {
-				pins = "gpio26", "gpio27";
-				function = "qup2_se6";
-				drive-strength = <2>;
-				bias-pull-up;
-			};
+				cts-pins {
+					pins = "gpio24";
+					function = "qup2_se6";
+					drive-strength = <2>;
+					bias-disable;
+				};
 
-			/* CTS gpio24, RTS gpio25 (stock qupv3_se14_cts/rts) */
-			qup_uart14_cts_rts_ml: qup-uart14-cts-rts-state {
-				pins = "gpio24", "gpio25";
-				function = "qup2_se6";
-				drive-strength = <2>;
-				bias-pull-down;
+				rts-pins {
+					pins = "gpio25";
+					function = "qup2_se6";
+					drive-strength = <2>;
+					bias-pull-down;
+				};
+
+				tx-pins {
+					pins = "gpio26";
+					function = "qup2_se6";
+					drive-strength = <2>;
+					bias-pull-up;
+				};
+
+				rx-pins {
+					pins = "gpio27";
+					function = "qup2_se6";
+					drive-strength = <2>;
+					bias-disable;
+				};
 			};
 
 			/* upstream pcie0-default-state: perst/clkreq/wake */
@@ -302,8 +321,7 @@
 			interconnect-names = "qup-core", "qup-config";
 
 			pinctrl-names = "default";
-			pinctrl-0 = <&qup_uart14_default_ml>,
-				    <&qup_uart14_cts_rts_ml>;
+			pinctrl-0 = <&qup_uart14_default_ml>;
 			/* drop the vendor active/sleep/shutdown state phandles:
 			 * they mux via qup2_se6_lN lane variants that only the
 			 * downstream Sun pinctrl driver implements */
@@ -322,7 +340,14 @@
 				vddrfa1p2-supply = <&vreg_pmu_rfa_1p2_ml>;
 				vddrfa1p8-supply = <&vreg_pmu_rfa_1p8_ml>;
 
-				max-speed = <3200000>;
+				/*
+				 * R18: the version read at 115200 worked, then
+				 * every TLV segment timed out and frames came
+				 * back garbled right after the 3.2 Mbaud switch.
+				 * Stay at the init speed until the high-speed
+				 * clocking is understood (~30 s download).
+				 */
+				max-speed = <115200>;
 			};
 		};
 	};

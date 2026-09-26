@@ -218,21 +218,25 @@ say "debug environment up: NCM 10.42.0.2, ssh root@10.42.0.2"
   modprobe hci_uart >> "$LOG" 2>&1
   n=0
   while [ ! -e /sys/class/bluetooth/hci0 ] && [ $n -lt 20 ]; do sleep 1; n=$((n + 1)); done
-  sleep 5
+  # hci0 exists before setup; the 115200 firmware download takes ~30 s
+  sleep 60
+  hciconfig -a >> "$LOG" 2>&1 || cat /sys/class/bluetooth/hci0/address >> "$LOG" 2>&1
   ls /sys/class/bluetooth/ >> "$LOG" 2>&1
   dmesg | grep -iE 'bluetooth|hci|qca|pwrseq|wcn|898000|serdev' >> "$LOG" 2>&1
   snap bt
   echo "piano-wlanbt: BT phase done (hci0: $([ -e /sys/class/bluetooth/hci0 ] && echo yes || echo no))" > /dev/kmsg
 
-  echo "--- WLAN phase in 15 s (touch /run/wlan-hold to park it) ---" >> "$LOG"
-  sleep 15
+  echo "--- WLAN phase in 45 s (touch /run/wlan-hold to park it) ---" >> "$LOG"
+  sleep 45
   while [ -e /run/wlan-hold ]; do sleep 2; done
 
   stage 2 "WLAN: pci-pwrctrl-pwrseq, then the PCIe PHY (starts the pcie0 host probe)"
   piano-qup-smmu --check 0x1400/0x7f >> "$LOG" 2>&1
   modprobe pci_pwrctrl_pwrseq >> "$LOG" 2>&1
   sleep 1
-  modprobe phy_qcom_qmp_pcie >> "$LOG" 2>&1
+  # piano_skip_bcr: R16 reset on the core BCR assert, R18 on the next
+  # (PHY) BCR assert; pcie-qcom already skips the core one on sm8750
+  modprobe phy_qcom_qmp_pcie piano_skip_bcr=1 >> "$LOG" 2>&1
   sleep 8
   dmesg | grep -iE 'qcom-pcie|1c00000|pci|phy-qcom|pwrctrl|pwrseq' >> "$LOG" 2>&1
   for d in /sys/bus/pci/devices/*; do
