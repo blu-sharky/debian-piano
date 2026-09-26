@@ -386,6 +386,15 @@
 				 */
 				max-speed = <8000000>;
 				firmware-name = "brhbtnv20.bin", "brhbtfw20.tlv";
+
+				/*
+				 * The factory address lives in the Android persist
+				 * partition; until that is read, use a locally
+				 * administered one (02:50:49:41:4e:4f, "PIANO"),
+				 * little-endian as the binding requires.  Only used
+				 * when the controller reports its default address.
+				 */
+				local-bd-address = [4f 4e 41 49 50 02];
 			};
 		};
 	};
