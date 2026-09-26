@@ -233,9 +233,10 @@ say "debug environment up: NCM 10.42.0.2, ssh root@10.42.0.2"
   done
   dmesg | grep -iE 'bluetooth|hci|qca|piano-dbg: baud|serdev|898000' >> "$LOG" 2>&1
   echo "--- BT result: ${bt_ok} ---" >> "$LOG"
-  if [ "$bt_ok" = yes ] && command -v btmgmt >/dev/null 2>&1; then
-    btmgmt --index 0 power on >> "$LOG" 2>&1
-    timeout 15 btmgmt --index 0 find >> "$LOG" 2>&1
+  if [ "$bt_ok" = yes ]; then
+    echo "--- piano-bt-scan (hci0 up + 10 s LE scan):" >> "$LOG"
+    piano-bt-scan 0 10 >> "$LOG" 2>&1
+    echo "piano-bt-scan exit $?" >> "$LOG"
   fi
   ls /sys/class/bluetooth/ >> "$LOG" 2>&1
   snap bt

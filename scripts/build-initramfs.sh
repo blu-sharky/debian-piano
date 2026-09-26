@@ -29,6 +29,8 @@
 #   --touch-view FILE       installs the static THP frame viewer
 #                           (scripts/build-touch-view.sh) as
 #                           /usr/bin/piano-touch-view
+#   --bt-scan FILE          installs the static raw-HCI LE scanner as
+#                           /usr/bin/piano-bt-scan
 #
 # Any executable under initramfs/tests/ is installed into /usr/bin
 # (piano-tests, piano-touch-test, piano-display-test, piano-collect).
@@ -54,6 +56,7 @@ DROPBEAR_TREE=""
 IW_TREE=""
 PD_LOCATOR=""
 TOUCH_VIEW=""
+BT_SCAN=""
 APLAY_TREE=""
 AUTHORIZED_KEYS=""
 GENERATE_KEY_OUT=""
@@ -72,6 +75,7 @@ while [ $# -gt 0 ]; do
         --iw-tree)             IW_TREE=${2-}; shift 2 ;;
         --pd-locator)          PD_LOCATOR=${2-}; shift 2 ;;
         --touch-view)          TOUCH_VIEW=${2-}; shift 2 ;;
+        --bt-scan)             BT_SCAN=${2-}; shift 2 ;;
         --aplay-tree)          APLAY_TREE=${2-}; shift 2 ;;
         --output)              OUTPUT=${2-}; shift 2 ;;
         --authorized-keys)     AUTHORIZED_KEYS=${2-}; shift 2 ;;
@@ -220,6 +224,13 @@ if [ -n "$TOUCH_VIEW" ]; then
         || die "staged touch-view is not a static arm64 ELF: $TOUCH_VIEW"
     install -m 0755 "$TOUCH_VIEW" "$STAGING/usr/bin/piano-touch-view"
     echo "build-initramfs: installed piano-touch-view from $TOUCH_VIEW"
+fi
+
+# --- piano-bt-scan (raw-HCI LE scanner, Bluetooth proof) ----------------------
+if [ -n "$BT_SCAN" ]; then
+    file "$BT_SCAN" | grep -q 'ARM aarch64.*statically linked' \
+        || die "bt-scan is not a static arm64 ELF: $BT_SCAN"
+    install -m 0755 "$BT_SCAN" "$STAGING/usr/bin/piano-bt-scan"
 fi
 
 # --- iw (WLAN nl80211 client) ------------------------------------------------
