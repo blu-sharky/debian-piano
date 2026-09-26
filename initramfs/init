@@ -211,14 +211,18 @@ say "debug environment up: NCM 10.42.0.2, ssh root@10.42.0.2"
   ls -l /sys/bus/platform/devices/1c06000.phy/driver >> "$LOG" 2>&1
   # prove the SMMU stream matches exist BEFORE any pcie/ath12k DMA
   piano-qup-smmu --check 0xb6 0xa3 0x1400 0x1401 0x436 0x423 >> "$LOG" 2>&1
-  # boot-state evidence: pcie GDSC (gcc 0x100000 + 0x6b004), the shared
-  # collapse-vote register 0x5214c, and the pcie phy GDSC (0x16c000)
-  echo "--- GDSC boot state (GDSCR pcie=0x106b004? gcc=0x100000+):" >> "$LOG"
-  devmem 0x106b004 32 >> "$LOG" 2>&1
+  # GCC base 0x100000 + offsets from gcc-sm8750.c. R15 mistyped
+  # 0x16b004/0x16c000 as 0x106b004/0x106c000 (outside GCC).
+  echo "--- GDSC boot state: core 0x16b004, CFG 0x16b008, vote 0x15214c, PHY 0x16c000:" >> "$LOG"
+  devmem 0x16b004 32 >> "$LOG" 2>&1
+  devmem 0x16b008 32 >> "$LOG" 2>&1
   devmem 0x15214c 32 >> "$LOG" 2>&1
-  devmem 0x106c000 32 >> "$LOG" 2>&1
+  devmem 0x16c000 32 >> "$LOG" 2>&1
 
-  stage 0b "pwrseq-qcom-wcn + pci-pwrctrl-pwrseq (combo PMU + WLAN power)"
+  stage 0b "gpio-shared-proxy + pwrseq-qcom-wcn + pci-pwrctrl-pwrseq"
+  # Shared physical GPIOs resolve through auxiliary proxy gpiochips;
+  # symbol-based module dependency resolution does not pull this in.
+  modprobe gpio_shared_proxy >> "$LOG" 2>&1
   modprobe pwrseq_qcom_wcn >> "$LOG" 2>&1
   modprobe pci_pwrctrl_pwrseq >> "$LOG" 2>&1
   sleep 1
@@ -235,10 +239,9 @@ say "debug environment up: NCM 10.42.0.2, ssh root@10.42.0.2"
   ls /proc/device-tree/soc/pcie@1c00000/pcie0_rp/ >> "$LOG" 2>&1
   od -c /proc/device-tree/soc/pcie@1c00000/pcie0_rp/device_type >> "$LOG" 2>&1
   od -An -tx4 /proc/device-tree/soc/pcie@1c00000/pcie0_rp/phys >> "$LOG" 2>&1
-  # one manual rebind attempt with everything loaded
-  echo 1c00000.pcie > /sys/bus/platform/drivers/qcom-pcie/bind 2>> "$LOG" || true
-  sleep 3
-  dmesg | grep -iE 'qcom-pcie|PCI host' | tail -10 >> "$LOG" 2>&1
+  # Preserve the complete probe trace, not just filtered marker lines.
+  # Do not manually rebind after a possible oops or failed probe.
+  dmesg > /run/wlanbt-dmesg.log
 
   stage 1 "hci_uart (BT power-on + firmware over uart14)"
   modprobe hci_uart >> "$LOG" 2>&1
