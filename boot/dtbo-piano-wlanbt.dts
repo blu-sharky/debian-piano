@@ -364,6 +364,16 @@
 				 * clocking is understood (~30 s download).
 				 */
 				max-speed = <115200>;
+
+				/*
+				 * R20: the controller reports product 0x21 /
+				 * ROM 0x200 and rejected the WCN7850 patch
+				 * (product 0x19) with HCI status -104.  The
+				 * matching stock files are the "Brahma" set:
+				 * NVM by board id (brhbtnv20.bXX), rampatch
+				 * brhbtfw20.tlv.
+				 */
+				firmware-name = "brhbtnv20", "brhbtfw20.tlv";
 			};
 		};
 	};
