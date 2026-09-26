@@ -215,16 +215,32 @@ say "debug environment up: NCM 10.42.0.2, ssh root@10.42.0.2"
   sleep 3
   ls -l /sys/bus/platform/devices/wcn7850-pmu/driver >> "$LOG" 2>&1
   ls -l /sys/bus/platform/devices/898000.serial/driver >> "$LOG" 2>&1
-  modprobe hci_uart >> "$LOG" 2>&1
-  n=0
-  while [ ! -e /sys/class/bluetooth/hci0 ] && [ $n -lt 20 ]; do sleep 1; n=$((n + 1)); done
-  # hci0 is registered before setup runs; give the firmware download and a
-  # possible power-cycle retry time to finish
-  sleep 20
+  # One boot tries several operating speeds (hci_uart piano_speed=N):
+  # 3.2 Mbaud answered with unreassemblable frames, 115200 is too slow for
+  # the mode-3 rampatch.  Each attempt ends in "setup on UART is completed"
+  # or in the first "Retry BT power ON"; the module is then unloaded.
+  bt_ok=no
+  for spd in 3000000 2000000 3200000; do
+    echo "--- BT attempt at $spd baud ---" >> "$LOG"
+    echo "piano-wlanbt: BT attempt at $spd baud" > /dev/kmsg
+    # only look at messages from this attempt's kmsg marker on
+    since() { dmesg | sed -n "/BT attempt at $spd baud/,\$p"; }
+    modprobe hci_uart piano_speed=$spd >> "$LOG" 2>&1
+    n=0
+    while [ $n -lt 40 ]; do
+      if since | grep -q 'setup on UART is completed'; then bt_ok=$spd; break; fi
+      since | grep -q 'Retry BT power ON' && break
+      sleep 1; n=$((n + 1))
+    done
+    since | grep -iE 'bluetooth|hci|qca|piano-dbg|serdev|898000' >> "$LOG" 2>&1
+    [ "$bt_ok" != no ] && break
+    rmmod hci_uart >> "$LOG" 2>&1
+    sleep 2
+  done
+  echo "--- BT result: ${bt_ok} ---" >> "$LOG"
   ls /sys/class/bluetooth/ >> "$LOG" 2>&1
-  dmesg | grep -iE 'bluetooth|hci|qca|pwrseq|wcn|898000|serdev' >> "$LOG" 2>&1
   snap bt
-  echo "piano-wlanbt: BT phase done (hci0: $([ -e /sys/class/bluetooth/hci0 ] && echo yes || echo no))" > /dev/kmsg
+  echo "piano-wlanbt: BT phase done (setup completed at: $bt_ok)" > /dev/kmsg
 
   echo "--- WLAN phase in 45 s (touch /run/wlan-hold to park it) ---" >> "$LOG"
   sleep 45
