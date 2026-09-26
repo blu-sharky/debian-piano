@@ -215,35 +215,28 @@ say "debug environment up: NCM 10.42.0.2, ssh root@10.42.0.2"
   sleep 3
   ls -l /sys/bus/platform/devices/wcn7850-pmu/driver >> "$LOG" 2>&1
   ls -l /sys/bus/platform/devices/898000.serial/driver >> "$LOG" 2>&1
-  # One boot tries several operating speeds (hci_uart piano_speed=N):
-  # 3.2 Mbaud answered with unreassemblable frames, 115200 is too slow for
-  # the mode-3 rampatch.  Each attempt ends in "setup on UART is completed"
-  # or in the first "Retry BT power ON"; the module is then unloaded.
+  # One setup attempt, no power-cycle retries (each retry costs ~30 s of
+  # HCI timeouts).  The operating speed comes from the DT (3.2 Mbaud; R23
+  # proved the SE clock choice exact at 3.0 and 3.2 Mbaud).
   bt_ok=no
-  for spd in 3000000 2000000 3200000; do
-    echo "--- BT attempt at $spd baud ---" >> "$LOG"
-    echo "piano-wlanbt: BT attempt at $spd baud" > /dev/kmsg
-    # only look at messages from this attempt's kmsg marker on
-    since() { dmesg | sed -n "/BT attempt at $spd baud/,\$p"; }
-    modprobe hci_uart piano_speed=$spd >> "$LOG" 2>&1
-    n=0
-    while [ $n -lt 40 ]; do
-      if since | grep -q 'setup on UART is completed'; then bt_ok=$spd; break; fi
-      since | grep -q 'Retry BT power ON' && break
-      sleep 1; n=$((n + 1))
-    done
-    since | grep -iE 'bluetooth|hci|qca|piano-dbg|serdev|898000' >> "$LOG" 2>&1
-    [ "$bt_ok" != no ] && break
-    rmmod hci_uart >> "$LOG" 2>&1
-    sleep 2
+  modprobe hci_uart piano_retries=0 >> "$LOG" 2>&1
+  # the uart14 probe (and with it hci0) only lands ~10 s later
+  n=0
+  while ! dmesg | grep -q 'hci0: setting up' && [ $n -lt 30 ]; do sleep 1; n=$((n + 1)); done
+  n=0
+  while [ $n -lt 15 ]; do
+    if dmesg | grep -q 'setup on UART is completed'; then bt_ok=yes; break; fi
+    dmesg | grep -qE 'Failed to request file|setup failed|Retry BT power ON' && break
+    sleep 1; n=$((n + 1))
   done
+  dmesg | grep -iE 'bluetooth|hci|qca|piano-dbg: baud|serdev|898000' >> "$LOG" 2>&1
   echo "--- BT result: ${bt_ok} ---" >> "$LOG"
   ls /sys/class/bluetooth/ >> "$LOG" 2>&1
   snap bt
-  echo "piano-wlanbt: BT phase done (setup completed at: $bt_ok)" > /dev/kmsg
+  echo "piano-wlanbt: BT phase done (setup completed: $bt_ok)" > /dev/kmsg
 
-  echo "--- WLAN phase in 45 s (touch /run/wlan-hold to park it) ---" >> "$LOG"
-  sleep 45
+  echo "--- WLAN phase in 10 s (touch /run/wlan-hold to park it) ---" >> "$LOG"
+  sleep 10
   while [ -e /run/wlan-hold ]; do sleep 2; done
 
   stage 2 "WLAN: pci-pwrctrl-pwrseq, then the PCIe PHY (starts the pcie0 host probe)"
