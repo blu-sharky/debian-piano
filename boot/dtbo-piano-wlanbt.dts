@@ -163,6 +163,22 @@
 				regulator-boot-on;
 			};
 
+			/*
+			 * R20: stand-in for TCSR_PCIE_0_CLKREF_EN.  The base overlay
+			 * (fragment@202) turned the stock syscon@1fc0000 into the
+			 * mainline tcsrcc, but the clkref block lives at 0xf204008
+			 * (stock and mainline tcsrcc agree; PCIe0 = offset 0x0).
+			 * R19 reset exactly when the PHY enabled "ref", i.e. wrote
+			 * bit 0 of 0x1fc0000.  The initramfs sets the real enable
+			 * bit before the PHY loads; the PHY only sees this dummy.
+			 */
+			pcie0_clkref_ml: pcie0-clkref-ml {
+				compatible = "fixed-clock";
+				#clock-cells = <0>;
+				clock-frequency = <19200000>;
+				clock-output-names = "pcie0_clkref_ml";
+			};
+
 			wcn7850_pmu_ml: wcn7850-pmu {
 				compatible = "qcom,wcn7850-pmu";
 
@@ -449,7 +465,7 @@
 
 				clocks = <&gcc GCC_PCIE_0_AUX_CLK>,
 					 <&gcc GCC_PCIE_0_CFG_AHB_CLK>,
-					 <&tcsr TCSR_PCIE_0_CLKREF_EN>,
+					 <&pcie0_clkref_ml>,
 					 <&gcc GCC_PCIE_0_PHY_RCHNG_CLK>,
 					 <&gcc GCC_PCIE_0_PIPE_CLK>;
 				clock-names = "aux", "cfg_ahb", "ref", "rchng",
