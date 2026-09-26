@@ -179,8 +179,31 @@
 				clock-output-names = "pcie0_clkref_ml";
 			};
 
+			/*
+			 * Peach v2 combo (WCN7861 in the Lenovo Y700 Gen4 port):
+			 * WCN7850 rails plus the AOSS/PDC setup the stock cnss2
+			 * and btpower drivers send (qcom,pdc_init_table,
+			 * qcom,vreg_pdc_map and qcom,pmu_vreg_map of the stock
+			 * cnss-peach / bt_peach nodes).  RF_CLK1 is not voted
+			 * on the normal power-on path.
+			 */
 			wcn7850_pmu_ml: wcn7850-pmu {
-				compatible = "qcom,wcn7850-pmu";
+				compatible = "qcom,wcn7861-pmu";
+
+				qcom,qmp = <&aoss_qmp>;
+				qcom,pdc-init-table =
+					"{class: wlan_pdc, ss: rf, res: s5f.m, enable: 1}",
+					"{class: wlan_pdc, ss: rf, res: s5f.v, enable: 1}",
+					"{class: wlan_pdc, ss: rf, res: s5f.v, upval: 876}",
+					"{class: wlan_pdc, ss: rf, res: s5f.v, dwnval: 876}";
+				qcom,vreg-pdc-map = "s5f:rf", "s4d:bb", "s3g:rf",
+						    "s7i:rf";
+				qcom,pmu-vreg-map =
+					"VDDD_AON_0P9:s5f", "VDDA_RFA_1P9:s3g",
+					"VDDA_RFA_1P3:s7i", "VDDA_RFA_0P9:s5f",
+					"VDDD_WLMX_0P9:s4d", "VDDD_WLCX_0P9:s5f",
+					"VDDD_BTCX_0P9:s5f", "VDDD_BTCMX_0P9:s5f",
+					"VDDA_PCIE_1P2:s7i", "VDDA_PCIE_0P9:s7i";
 
 				pinctrl-names = "default";
 				pinctrl-0 = <&wlan_en_ml>;
@@ -198,7 +221,6 @@
 				vddrfa1p2-supply = <&vreg_s7i_1p2_ml>;
 				vddrfa1p8-supply = <&vreg_s3g_1p8_ml>;
 
-				clocks = <&rpmhcc_ml RPMH_RF_CLK1>;
 
 				regulators {
 					vreg_pmu_rfa_cmn_ml: ldo0 {
@@ -346,7 +368,7 @@
 			pinctrl-3;
 
 			bluetooth {
-				compatible = "qcom,wcn7850-bt";
+				compatible = "qcom,wcn7861-bt";
 
 				vddrfacmn-supply = <&vreg_pmu_rfa_cmn_ml>;
 				vddaon-supply = <&vreg_pmu_aon_0p59_ml>;
@@ -357,21 +379,13 @@
 				vddrfa1p8-supply = <&vreg_pmu_rfa_1p8_ml>;
 
 				/*
-				 * The patch TLV uses download mode 3 (no per-segment
-				 * ack): every segment is queued at once and only the
-				 * last one is waited for, under the 2 s HCI command
-				 * timer.  The whole ~220 KB must therefore cross the
-				 * UART within 2 s, which needs the 3.2 Mbaud rate.
+				 * Brahma v2 (product 0x21, ROM 0x200): the stock HAL
+				 * skips the 0xfc48 baud change and downloads at the
+				 * init rate; hci_qca does the same for this tuple.
+				 * 8 Mbaud is only written into the NVM HCI tag.
 				 */
-				max-speed = <3200000>;
-
-				/*
-				 * The controller reports product 0x21 / ROM
-				 * 0x200: the stock "Brahma" rampatch
-				 * brhbtfw20.tlv and its NVM set, selected by
-				 * board id (brhbtnv20.bXX).
-				 */
-				firmware-name = "brhbtnv20", "brhbtfw20.tlv";
+				max-speed = <8000000>;
+				firmware-name = "brhbtnv20.bin", "brhbtfw20.tlv";
 			};
 		};
 	};

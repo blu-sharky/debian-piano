@@ -216,21 +216,27 @@ say "debug environment up: NCM 10.42.0.2, ssh root@10.42.0.2"
   ls -l /sys/bus/platform/devices/wcn7850-pmu/driver >> "$LOG" 2>&1
   ls -l /sys/bus/platform/devices/898000.serial/driver >> "$LOG" 2>&1
   # One setup attempt, no power-cycle retries (each retry costs ~30 s of
-  # HCI timeouts).  The operating speed comes from the DT (3.2 Mbaud; R23
-  # proved the SE clock choice exact at 3.0 and 3.2 Mbaud).
+  # HCI timeouts).  Brahma v2 downloads at 115200 with paced segments
+  # (~25 s for the rampatch), as the stock HAL does.
+  echo "--- AOSS QMP (PDC votes for the WCN PMU):" >> "$LOG"
+  ls -l /sys/bus/platform/devices/c300000.power-controller/driver >> "$LOG" 2>&1
   bt_ok=no
   modprobe hci_uart piano_retries=0 >> "$LOG" 2>&1
   # the uart14 probe (and with it hci0) only lands ~10 s later
   n=0
   while ! dmesg | grep -q 'hci0: setting up' && [ $n -lt 30 ]; do sleep 1; n=$((n + 1)); done
   n=0
-  while [ $n -lt 15 ]; do
+  while [ $n -lt 75 ]; do
     if dmesg | grep -q 'setup on UART is completed'; then bt_ok=yes; break; fi
     dmesg | grep -qE 'Failed to request file|setup failed|Retry BT power ON' && break
     sleep 1; n=$((n + 1))
   done
   dmesg | grep -iE 'bluetooth|hci|qca|piano-dbg: baud|serdev|898000' >> "$LOG" 2>&1
   echo "--- BT result: ${bt_ok} ---" >> "$LOG"
+  if [ "$bt_ok" = yes ] && command -v btmgmt >/dev/null 2>&1; then
+    btmgmt --index 0 power on >> "$LOG" 2>&1
+    timeout 15 btmgmt --index 0 find >> "$LOG" 2>&1
+  fi
   ls /sys/class/bluetooth/ >> "$LOG" 2>&1
   snap bt
   echo "piano-wlanbt: BT phase done (setup completed: $bt_ok)" > /dev/kmsg
@@ -274,7 +280,15 @@ say "debug environment up: NCM 10.42.0.2, ssh root@10.42.0.2"
   sleep 3
   ls /sys/class/ieee80211/ >> "$LOG" 2>&1
   iw dev >> "$LOG" 2>&1
-  dmesg | grep -iE 'ath12k|mhi|wlan|ieee80211' >> "$LOG" 2>&1
+  # scan proof: bring the first wireless netdev up and list what it hears
+  wdev=$(ls /sys/class/net | while read -r d; do [ -d /sys/class/net/$d/wireless ] && echo "$d"; done | head -1)
+  if [ -n "$wdev" ]; then
+    ip link set "$wdev" up >> "$LOG" 2>&1
+    sleep 2
+    echo "--- scan on $wdev:" >> "$LOG"
+    iw dev "$wdev" scan 2>&1 | grep -E '^BSS|SSID:|signal:|freq:' | head -60 >> "$LOG"
+  fi
+  dmesg | grep -iE 'ath12k|mhi|wlan|ieee80211|qrtr' >> "$LOG" 2>&1
   snap wlan
   echo "piano-wlanbt: stages complete (see /run/wlanbt-stages.log)" > /dev/kmsg
 ) &
