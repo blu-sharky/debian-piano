@@ -62,10 +62,15 @@ probe_all() {
     fi
 
     # bluetooth
-    if [ -e /sys/class/bluetooth/hci0 ]; then
-        S_BT=1; E_BT="hci0 $(cat /sys/class/bluetooth/hci0/address 2>/dev/null)"
-    else
+    # hci0 is registered before the QCA setup runs, so its presence alone
+    # proves nothing: judge by the last hci0 kernel message
+    bt_last=$(dmesg 2>/dev/null | grep 'Bluetooth: hci0:' | tail -1)
+    if [ ! -e /sys/class/bluetooth/hci0 ]; then
         S_BT=0; E_BT="no hci0"
+    elif echo "$bt_last" | grep -qiE 'fail|retry|timeout|error'; then
+        S_BT=0; E_BT="hci0 setup failed"
+    else
+        S_BT=1; E_BT="hci0 set up"
     fi
 
     # wlan

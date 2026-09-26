@@ -357,21 +357,19 @@
 				vddrfa1p8-supply = <&vreg_pmu_rfa_1p8_ml>;
 
 				/*
-				 * R18: the version read at 115200 worked, then
-				 * every TLV segment timed out and frames came
-				 * back garbled right after the 3.2 Mbaud switch.
-				 * Stay at the init speed until the high-speed
-				 * clocking is understood (~30 s download).
+				 * The patch TLV uses download mode 3 (no per-segment
+				 * ack): every segment is queued at once and only the
+				 * last one is waited for, under the 2 s HCI command
+				 * timer.  The whole ~220 KB must therefore cross the
+				 * UART within 2 s, which needs the 3.2 Mbaud rate.
 				 */
-				max-speed = <115200>;
+				max-speed = <3200000>;
 
 				/*
-				 * R20: the controller reports product 0x21 /
-				 * ROM 0x200 and rejected the WCN7850 patch
-				 * (product 0x19) with HCI status -104.  The
-				 * matching stock files are the "Brahma" set:
-				 * NVM by board id (brhbtnv20.bXX), rampatch
-				 * brhbtfw20.tlv.
+				 * The controller reports product 0x21 / ROM
+				 * 0x200: the stock "Brahma" rampatch
+				 * brhbtfw20.tlv and its NVM set, selected by
+				 * board id (brhbtnv20.bXX).
 				 */
 				firmware-name = "brhbtnv20", "brhbtfw20.tlv";
 			};

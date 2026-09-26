@@ -218,9 +218,9 @@ say "debug environment up: NCM 10.42.0.2, ssh root@10.42.0.2"
   modprobe hci_uart >> "$LOG" 2>&1
   n=0
   while [ ! -e /sys/class/bluetooth/hci0 ] && [ $n -lt 20 ]; do sleep 1; n=$((n + 1)); done
-  # hci0 exists before setup; the 115200 firmware download takes ~30 s
-  sleep 60
-  hciconfig -a >> "$LOG" 2>&1 || cat /sys/class/bluetooth/hci0/address >> "$LOG" 2>&1
+  # hci0 is registered before setup runs; give the firmware download and a
+  # possible power-cycle retry time to finish
+  sleep 20
   ls /sys/class/bluetooth/ >> "$LOG" 2>&1
   dmesg | grep -iE 'bluetooth|hci|qca|pwrseq|wcn|898000|serdev' >> "$LOG" 2>&1
   snap bt
