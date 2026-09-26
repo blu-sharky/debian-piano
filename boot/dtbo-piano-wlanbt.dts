@@ -21,9 +21,12 @@
  * (children of the non-compatible drv@2 node, vendor compatible), so the
  * exact regulator set the PMU needs is re-declared as mainline blocks
  * directly under apps_rsc — the same pattern that already carries
- * rpmhcc/bcm-voter (fragment@215 of the milestone-1 base).  Voltage
- * windows mirror the stock qcom,init-voltage windows.  No rail is marked
- * always-on: they are enabled only when the pwrseq unit powers the combo.
+ * rpmhcc/bcm-voter (fragment@215 of the milestone-1 base).  Each window
+ * starts at the stock qcom,init-voltage and every rail is always-on: they
+ * are shared parents of display/USB rails, so HLOS must never drop the
+ * APPS vote.  L3G also supplies the DSI and USB PHYs; up to R17 the PCIe
+ * PHY owned it, so any disable on the PCIe error path cut the live panel
+ * and the NCM link (matching the observed screen corruption + reset).
  *
  * pcie0 keeps the stock ranges/dma-coherent but moves reg/interrupts/
  * clocks/resets to the mainline layout.  The stock iommu-map/msi-map are
@@ -44,34 +47,36 @@
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 
 / {
-	/* mainline rpmh regulators for the WCN PMU input rails (see header) */
+	/*
+	 * mainline rpmh regulators for the WCN PMU input rails (see header).
+	 *
+	 * R18: every rail is always-on and its window starts at the stock
+	 * qcom,init-voltage.  These are shared parents (S3G feeds the panel
+	 * LDO L12B, S7I feeds L3G = DSI/USB PHY 1.2 V) and the APPS DRV vote
+	 * is the one the bootloader left behind: a consumer disable on the
+	 * error path, or a registration-time vote below the stock voltage,
+	 * pulls those rails out from under the live display and the NCM link.
+	 * L1F/L3G/S1D are no longer declared at all (see fragment@233/234).
+	 */
 	fragment@229 {
 		target = <&apps_rsc>;
 		__overlay__ {
 			wcn_regs_d: regulators-0 {
 				compatible = "qcom,pm8550ve-rpmh-regulators";
-				vdd-s1-supply = <&vph_pwr_ml>;
 				vdd-s4-supply = <&vph_pwr_ml>;
 				qcom,pmic-id = "d";
-
-				vreg_s1d_0p97_ml: smps1 {
-					regulator-name = "vreg_s1d_0p97_ml";
-					regulator-min-microvolt = <880000>;
-					regulator-max-microvolt = <1100000>;
-					regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-				};
 
 				vreg_s4d_0p85_ml: smps4 {
 					regulator-name = "vreg_s4d_0p85_ml";
 					regulator-min-microvolt = <852000>;
 					regulator-max-microvolt = <1036000>;
 					regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+					regulator-always-on;
 				};
 			};
 
 			wcn_regs_f: regulators-1 {
 				compatible = "qcom,pm8550ve-rpmh-regulators";
-				vdd-l1-supply = <&vreg_s1d_0p97_ml>;
 				vdd-l2-supply = <&vreg_s7i_1p2_ml>;
 				vdd-l3-supply = <&vreg_s3g_1p8_ml>;
 				vdd-s5-supply = <&vph_pwr_ml>;
@@ -82,13 +87,7 @@
 					regulator-min-microvolt = <852000>;
 					regulator-max-microvolt = <1000000>;
 					regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-				};
-
-				vreg_l1f_0p88_ml: ldo1 {
-					regulator-name = "vreg_l1f_0p88_ml";
-					regulator-min-microvolt = <880000>;
-					regulator-max-microvolt = <920000>;
-					regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+					regulator-always-on;
 				};
 
 				vreg_l2f_1p2_ml: ldo2 {
@@ -96,6 +95,7 @@
 					regulator-min-microvolt = <1200000>;
 					regulator-max-microvolt = <1200000>;
 					regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+					regulator-always-on;
 				};
 
 				vreg_l3f_1p8_ml: ldo3 {
@@ -103,12 +103,12 @@
 					regulator-min-microvolt = <1800000>;
 					regulator-max-microvolt = <1800000>;
 					regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+					regulator-always-on;
 				};
 			};
 
 			wcn_regs_g: regulators-2 {
 				compatible = "qcom,pm8550ve-rpmh-regulators";
-				vdd-l3-supply = <&vreg_s7i_1p2_ml>;
 				vdd-s3-supply = <&vph_pwr_ml>;
 				qcom,pmic-id = "g";
 
@@ -117,13 +117,7 @@
 					regulator-min-microvolt = <1856000>;
 					regulator-max-microvolt = <2000000>;
 					regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-				};
-
-				vreg_l3g_1p2_ml: ldo3 {
-					regulator-name = "vreg_l3g_1p2_ml";
-					regulator-min-microvolt = <1200000>;
-					regulator-max-microvolt = <1256000>;
-					regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+					regulator-always-on;
 				};
 			};
 
@@ -134,9 +128,10 @@
 
 				vreg_s7i_1p2_ml: smps7 {
 					regulator-name = "vreg_s7i_1p2_ml";
-					regulator-min-microvolt = <1224000>;
+					regulator-min-microvolt = <1256000>;
 					regulator-max-microvolt = <1340000>;
 					regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+					regulator-always-on;
 				};
 			};
 		};
@@ -151,6 +146,19 @@
 				regulator-name = "vph_pwr_ml";
 				regulator-min-microvolt = <3700000>;
 				regulator-max-microvolt = <3700000>;
+				regulator-always-on;
+				regulator-boot-on;
+			};
+
+			/*
+			 * Stand-in for L1F (0.88 V) and L3G (1.2 V), the PCIe PHY
+			 * rails.  Both also feed the DSI and USB PHYs and stay on
+			 * for the whole session; the stock pcie0 node does not vote
+			 * them either.  HLOS must never switch them.
+			 */
+			pcie0_phy_rails_ml: pcie0-phy-rails-ml {
+				compatible = "regulator-fixed";
+				regulator-name = "pcie0_phy_rails_ml";
 				regulator-always-on;
 				regulator-boot-on;
 			};
@@ -374,7 +382,7 @@
 			/* ops_1_9_0 get_resources: bulk_get("vdda","vddpe-3v3")
 			 * fails -ENODEV (silently!) when the properties are
 			 * absent — root cause of every -61 field round. */
-			vdda-supply = <&vreg_l1f_0p88_ml>;
+			vdda-supply = <&pcie0_phy_rails_ml>;
 			vddpe-3v3-supply = <&vph_pwr_ml>;
 
 			power-domains = <&gcc GCC_PCIE_0_GDSC>;
@@ -430,8 +438,8 @@
 
 				power-domains = <&gcc GCC_PCIE_0_PHY_GDSC>;
 
-				vdda-phy-supply = <&vreg_l1f_0p88_ml>;
-				vdda-pll-supply = <&vreg_l3g_1p2_ml>;
+				vdda-phy-supply = <&pcie0_phy_rails_ml>;
+				vdda-pll-supply = <&pcie0_phy_rails_ml>;
 
 				#clock-cells = <0>;
 				clock-output-names = "pcie0_pipe_clk";
@@ -454,7 +462,7 @@
 			#size-cells = <2>;
 			ranges;
 
-			wake-gpios = <&piano_tlmm_ml 104 GPIO_ACTIVE_HIGH>;
+			wake-gpios = <&piano_tlmm_ml 104 GPIO_ACTIVE_LOW>;
 			reset-gpios = <&piano_tlmm_ml 102 GPIO_ACTIVE_LOW>;
 
 			/* Round-3 fix: the 7.2.6 pcie-qcom driver takes the PHY
