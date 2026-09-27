@@ -9,6 +9,7 @@ ABL physically writes FILL data: for a mostly-empty 12 GiB image that is
 no substitute: mke2fs zeroes inode tables and the journal by punching holes,
 so hole-as-DONT_CARE would leave stale Android bytes in ext4 metadata.
 """
+import os
 import re
 import struct
 import subprocess
@@ -19,7 +20,7 @@ MAX_CHUNK = 64 << 20
 
 def free_ranges(image):
     out = subprocess.run(['dumpe2fs', image], check=True, capture_output=True,
-                         text=True, env={'LC_ALL': 'C'}).stdout
+                         text=True, env={**os.environ, 'LC_ALL': 'C'}).stdout
     block_size = int(re.search(r'^Block size:\s+(\d+)', out, re.M).group(1))
     block_count = int(re.search(r'^Block count:\s+(\d+)', out, re.M).group(1))
     ranges = []
