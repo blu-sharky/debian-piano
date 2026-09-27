@@ -1,13 +1,8 @@
 # debian-piano
 
-Debian rootfs, initramfs and boot-image builder for the **Xiaomi Pad 8 Pro**
-(codename *piano*, Qualcomm SM8750 / Snapdragon 8 Elite).
+Debian rootfs, initramfs and boot-image builder for the **Xiaomi Pad 8 Pro** (codename *piano*, Qualcomm SM8750 / Snapdragon 8 Elite).
 
-Everything here is written from scratch and licensed MIT, except the
-AOSP mkbootimg tools vendored under `mkbootimg/` (Apache-2.0, provenance in
-`mkbootimg/README.md`). No proprietary firmware blobs are stored in this
-repository — the RAM-boot test image picks firmware up from a local directory at build
-time.
+Everything here is written from scratch and licensed MIT, except the AOSP mkbootimg tools vendored under `mkbootimg/` (Apache-2.0, provenance in `mkbootimg/README.md`). No proprietary firmware blobs are stored in this repository — the RAM-boot test image picks firmware up from a local directory at build time.
 
 ## Repository layout
 
@@ -51,30 +46,13 @@ scripts/build-test-bootimg.sh \
 
 ### Test image contents
 
-`build-test-bootimg.sh` assembles a self-contained RAM-boot test image from
-the `piano/test-bringup` kernel (display pipeline + NT37801 panel + NT36532E
-touch). The initramfs carries:
+`build-test-bootimg.sh` assembles a self-contained RAM-boot test image from the `piano/test-bringup` kernel (display pipeline + NT37801 panel + NT36532E touch). The initramfs carries:
 
-- USB-NCM gadget network (host 10.42.0.1/24, device 10.42.0.2) with
-  dropbear SSH; an ed25519 access key is generated per build (or pass
-  `--authorized-keys`), `ssh -i out/test-image/piano-test-ssh-ed25519
-  root@10.42.0.2`. Optionally add root password auth with
-  `--root-password PASS` (SHA-512 hash in the initramfs /etc/passwd);
-  `--root-password ''` sets a BLANK password — SSH has no true
-  "no-auth" mode, but with dropbear's `-B` a blank password means
-  "press enter to log in". These are only reachable over the USB
-  point-to-point link.
-- `piano-tests` (menu + boot smoke report), `piano-touch-test`
-  (streams/decodes NT36532E THP touch frames), `piano-display-test`
-  (DRM state + colour-field/noise painting through /dev/fb0) and
-  `piano-collect` (evidence tarball for scp)
-- the `spi-geni-qcom` + `nt36532e_ts` modules and the four stock Novatek
-  touch firmware blobs (test image only, via `--firmware-dir`)
+- USB-NCM gadget network (host 10.42.0.1/24, device 10.42.0.2) with dropbear SSH; an ed25519 access key is generated per build (or pass `--authorized-keys`), `ssh -i out/test-image/piano-test-ssh-ed25519 root@10.42.0.2`. Optionally add root password auth with `--root-password PASS` (SHA-512 hash in the initramfs /etc/passwd); `--root-password ''` sets a BLANK password — SSH has no true "no-auth" mode, but with dropbear's `-B` a blank password means "press enter to log in". These are only reachable over the USB point-to-point link.
+- `piano-tests` (menu + boot smoke report), `piano-touch-test` (streams/decodes NT36532E THP touch frames), `piano-display-test` (DRM state + colour-field/noise painting through /dev/fb0) and `piano-collect` (evidence tarball for scp)
+- the `spi-geni-qcom` + `nt36532e_ts` modules and the four stock Novatek touch firmware blobs (test image only, via `--firmware-dir`)
 
-Every image is verified by an `unpack_bootimg` read-back before the build
-succeeds; parameters come from `boot/stock-boot-params.env` (stock-ROM
-CONFIRMED values only). Boot order and safety rules: see the umbrella
-repo's device bring-up runbook.
+Every image is verified by an `unpack_bootimg` read-back before the build succeeds; parameters come from `boot/stock-boot-params.env` (stock-ROM CONFIRMED values only). Boot order and safety rules: see the umbrella repo's device bring-up runbook.
 ```
 
 ### Device firmware (open design question)
