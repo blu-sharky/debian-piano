@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Build a firmware-free Debian GNOME arm64 tree. Local image assembly adds hardware inputs.
-# Usage: build-rootfs.sh --suite trixie --output DIR [--authorized-keys FILE] [--userspace-dir DIR]
+# Usage: build-rootfs.sh --suite trixie --output DIR [--authorized-keys FILE] [--userspace-dir DIR] [--mesa-dir DIR]
 set -euo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH
-SUITE=trixie OUTDIR='' KEYS='' USERSPACE_DIR=''
+SUITE=trixie OUTDIR='' KEYS='' USERSPACE_DIR='' MESA_DIR=''
 die() { echo "build-rootfs: $*" >&2; exit 1; }
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -11,7 +11,8 @@ while [ $# -gt 0 ]; do
         --output) OUTDIR=${2:?}; shift 2 ;;
         --authorized-keys) KEYS=$(realpath "${2:?}"); shift 2 ;;
         --userspace-dir) USERSPACE_DIR=$(realpath "${2:?}"); shift 2 ;;
-        -h|--help) echo 'Usage: build-rootfs.sh --suite trixie --output DIR [--authorized-keys FILE] [--userspace-dir DIR]'; exit 0 ;;
+        --mesa-dir) MESA_DIR=$(realpath "${2:?}"); shift 2 ;;
+        -h|--help) echo 'Usage: build-rootfs.sh --suite trixie --output DIR [--authorized-keys FILE] [--userspace-dir DIR] [--mesa-dir DIR]'; exit 0 ;;
         *) die "unknown option $1" ;;
     esac
 done
@@ -81,6 +82,46 @@ if [ -n "$USERSPACE_DIR" ]; then
     cp "${DEBS[@]}" "$ROOTFS/tmp/piano-packages/"
     chroot "$ROOTFS" sh -c 'DEBIAN_FRONTEND=noninteractive apt-get install -y /tmp/piano-packages/*.deb'
     rm -r "$ROOTFS/tmp/piano-packages"
+fi
+if [ -n "$MESA_DIR" ]; then
+    # piano-mesa runtime packages: Debian's backported Mesa with the
+    # Adreno 830 patches. Built against trixie-backports, so that suite is
+    # enabled; the pin keeps a newer stock Mesa (without the patches, i.e.
+    # without the GPU) from replacing it on a later upgrade.
+    shopt -s nullglob
+    DEBS=("$MESA_DIR"/*.deb)
+    [ "${#DEBS[@]}" -gt 0 ] || die "no Mesa packages in $MESA_DIR"
+    printf 'deb https://deb.debian.org/debian trixie-backports main\n' \
+        > "$ROOTFS/etc/apt/sources.list.d/trixie-backports.list"
+    cat > "$ROOTFS/etc/apt/preferences.d/piano-mesa" <<'PIN'
+# Keep the piano-mesa build: stock Mesa lacks the Adreno 830 patches.
+Package: src:mesa
+Pin: version *+piano*
+Pin-Priority: 1001
+PIN
+    chroot "$ROOTFS" apt-get update
+    mkdir -p "$ROOTFS/tmp/piano-mesa"
+    cp "${DEBS[@]}" "$ROOTFS/tmp/piano-mesa/"
+    # Mesa's binary packages depend on each other at the exact version:
+    # replace every installed one and add the core set.
+    MESA_CORE=' mesa-libgallium libgbm1 libegl-mesa0 libglx-mesa0 mesa-vulkan-drivers '
+    SELECTED=()
+    for deb in "$ROOTFS"/tmp/piano-mesa/*.deb; do
+        pkg=$(chroot "$ROOTFS" dpkg-deb -f "/tmp/piano-mesa/${deb##*/}" Package)
+        # shellcheck disable=SC2016 # dpkg-query format, not a shell expansion
+        if [[ $MESA_CORE != *" $pkg "* ]] &&
+           ! chroot "$ROOTFS" dpkg-query -W -f '${db:Status-Status}' "$pkg" 2>/dev/null | grep -qx installed; then
+            continue
+        fi
+        SELECTED+=("/tmp/piano-mesa/${deb##*/}")
+    done
+    chroot "$ROOTFS" env DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        --no-install-recommends -t trixie-backports "${SELECTED[@]}"
+    rm -r "$ROOTFS/tmp/piano-mesa"
+    # shellcheck disable=SC2016 # dpkg-query format, not a shell expansion
+    stale=$(chroot "$ROOTFS" dpkg-query -W -f '${source:Package} ${Package} ${Version} ${db:Status-Status}\n' \
+        | awk '$1 == "mesa" && $4 == "installed" && $3 !~ /[+]piano/')
+    [ -z "$stale" ] || die "Mesa packages without the piano patches remain: $stale"
 fi
 cp -a "$REPO/rootfs/overlay/." "$ROOTFS/"
 find "$ROOTFS/usr/lib/piano" "$ROOTFS/usr/local/bin" -type f -exec chmod 0755 {} +
