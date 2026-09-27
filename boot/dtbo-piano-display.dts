@@ -946,24 +946,30 @@
 		};
 	};
 
-	/* board pin states on the mainline TLMM node */
+	/*
+	 * Board pin states on the mainline TLMM node. The bootloader skips
+	 * fragments that target a node created by this overlay, so merge by
+	 * path instead of target = <&piano_tlmm_ml>.
+	 */
 	fragment@265 {
-		target = <&piano_tlmm_ml>;
+		target-path = "/soc";
 		__overlay__ {
-			/* stock qupv3_hub_i2c3_*_active */
-			hub_i2c3_data_clk_ml: hub-i2c3-data-clk-state {
-				pins = "gpio70", "gpio71";
-				function = "i2chub0_se3";
-				drive-strength = <2>;
-				bias-pull-up;
-			};
+			pinctrl@f100000 {
+				/* stock qupv3_hub_i2c3_*_active */
+				hub_i2c3_data_clk_ml: hub-i2c3-data-clk-state {
+					pins = "gpio70", "gpio71";
+					function = "i2chub0_se3";
+					drive-strength = <2>;
+					bias-pull-up;
+				};
 
-			/* stock qupv3_se8_i2c_*_active */
-			qup_i2c8_data_clk_ml: qup-i2c8-data-clk-state {
-				pins = "gpio0", "gpio1";
-				function = "qup2_se0";
-				drive-strength = <2>;
-				bias-pull-up;
+				/* stock qupv3_se8_i2c_*_active */
+				qup_i2c8_data_clk_ml: qup-i2c8-data-clk-state {
+					pins = "gpio0", "gpio1";
+					function = "qup2_se0";
+					drive-strength = <2>;
+					bias-pull-up;
+				};
 			};
 		};
 	};
@@ -999,6 +1005,8 @@
 			interconnect-names = "qup-core", "qup-config";
 			pinctrl-names = "default";
 			pinctrl-0 = <&hub_i2c3_data_clk_ml>;
+			/* The stock "sleep" state is in the driverless stock TLMM. */
+			pinctrl-1 = <&hub_i2c3_data_clk_ml>;
 			clock-frequency = <400000>;
 
 			ktz8866@11 {
@@ -1058,6 +1066,8 @@
 			dma-names = "tx", "rx";
 			pinctrl-names = "default";
 			pinctrl-0 = <&qup_i2c8_data_clk_ml>;
+			/* The stock "sleep" state is in the driverless stock TLMM. */
+			pinctrl-1 = <&qup_i2c8_data_clk_ml>;
 			clock-frequency = <400000>;
 
 			ktz8866@11 {
