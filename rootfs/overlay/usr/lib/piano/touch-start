@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+[ -f /run/piano-smmu-ready ] || { echo 'SMMU initialization missing'; exit 1; }
+modprobe gpio_shared_proxy
+modprobe pwrseq_qcom_wcn
+modprobe pinctrl_sm8750
+modprobe gpi
+modprobe spi_geni_qcom
+modprobe nt36532e_ts
+modprobe uinput
+n=0
+until grep -q '^irq_enabled: 1' /proc/nvt_thp_status 2>/dev/null; do
+    [ "$n" -lt 30 ] || exit 1
+    sleep 1; n=$((n + 1))
+done

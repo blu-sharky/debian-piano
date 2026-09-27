@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+out=${1:-/tmp/piano-report-$(date +%Y%m%d-%H%M%S)}
+mkdir -m 0700 "$out"
+uname -a > "$out/uname.txt"
+cat /proc/cmdline > "$out/cmdline.txt"
+cat /etc/piano/kernel-release > "$out/expected-kernel.txt"
+journalctl -b --no-pager > "$out/journal.txt"
+dmesg > "$out/dmesg.txt"
+systemctl --failed --no-pager > "$out/failed.txt"
+piano-smoke > "$out/smoke.txt" 2>&1 || true
+echo "Report: $out (review network identifiers before sharing)"

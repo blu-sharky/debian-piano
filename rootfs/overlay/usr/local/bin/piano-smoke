@@ -1,0 +1,23 @@
+#!/bin/sh
+# Read-only acceptance report. Run with sudo for journal and kernel logs.
+failed=0
+check() { if "$@"; then echo "PASS: $*"; else echo "FAIL: $*"; failed=1; fi; }
+check test "$(findmnt -n -o FSTYPE /)" = ext4
+check test "$(cat /etc/piano/kernel-release)" = "$(uname -r)"
+check test -e /run/piano-smmu-ready
+for unit in piano-usb piano-touch piano-radio ssh NetworkManager bluetooth gdm3; do
+    check systemctl is-active "$unit"
+done
+if grep -q '^qcom_q6v5_pas ' /proc/modules; then echo 'FAIL: unsafe remoteproc loaded'; failed=1; fi
+check ip -4 address show dev usb0
+check test -e /dev/dri/card0
+check grep -q 'piano NT36532' /proc/bus/input/devices
+systemctl --failed --no-pager
+loginctl list-sessions
+nmcli device status
+bluetoothctl show
+printf 'Run in GNOME Terminal: glxinfo -B; eglinfo -B
+'
+printf 'WiFi association and BT pairing need your network/device; no scan or pairing is started here.
+'
+exit "$failed"

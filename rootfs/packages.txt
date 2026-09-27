@@ -1,21 +1,46 @@
-# rootfs/packages.txt — fixed package list for the piano Debian rootfs.
-# Installed by scripts/build-rootfs.sh via debootstrap --include.
-# One package (or whitespace-free apt argument) per line; '#' starts a comment.
-
-# Init / base
-systemd
+# Debian trixie arm64; one package per line, main only.
+systemd-sysv
+systemd-timesyncd
 udev
 kmod
-
-# Networking
+dbus-user-session
+sudo
 network-manager
+wpasupplicant
+wireless-regdb
+iw
+bluez
 openssh-server
-
-# Graphical stack (P2 target desktop)
-phosh
-weston
-
-# Debug tooling
+iproute2
+iputils-ping
+bind9-dnsutils
+# GNOME on simpledrm, with Mesa software rendering.
+gnome-shell
+gnome-session
+gdm3
+gnome-control-center
+gnome-settings-daemon
+gnome-terminal
+gnome-text-editor
+gnome-system-monitor
+nautilus
+firefox-esr
+xserver-xorg-core
+xserver-xorg-input-libinput
+xwayland
+libgl1-mesa-dri
+mesa-utils
+mesa-utils-bin
+libglib2.0-bin
+dconf-cli
+fonts-dejavu
+fonts-noto-cjk
+pipewire-audio
+ibus
+ibus-libpinyin
+at-spi2-core
+evolution-data-server
+# Bring-up and everyday tools.
 bash
 coreutils
 util-linux
@@ -29,8 +54,7 @@ pciutils
 usbutils
 alsa-utils
 evtest
-i2c-tools
-lm-sensors
+libinput-tools
 rsync
 wget
 curl
@@ -42,7 +66,6 @@ xz-utils
 zstd
 dosfstools
 e2fsprogs
-kpartx
 parted
 fdisk
 bc

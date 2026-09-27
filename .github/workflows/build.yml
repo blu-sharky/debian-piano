@@ -4,6 +4,16 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      workspace_ref:
+        description: 'Umbrella revision containing build-rootfs-image.sh'
+        default: main
+        required: true
+      kernel_ref:
+        description: 'linux-piano revision containing piano_rootfs.config'
+        default: piano-7.2.6
+        required: true
 
 permissions:
   contents: read
@@ -12,100 +22,148 @@ jobs:
   build:
     name: build
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 300
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_COMPILERCHECK: content
+      CCACHE_MAXSIZE: 4G
     steps:
-      - uses: actions/checkout@v5
+      # A pull request builds against same-named companion branches in the
+      # umbrella and kernel repos when they exist (kernel also: piano/<topic>),
+      # so cross-repo changes are testable before any of them merges.
+      - name: Resolve companion refs
+        id: refs
+        env:
+          EVENT: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          INPUT_WORKSPACE: ${{ inputs.workspace_ref }}
+          INPUT_KERNEL: ${{ inputs.kernel_ref }}
+        run: |
+          has() { git ls-remote --exit-code --heads "https://github.com/bluseliu50/$1" "refs/heads/$2" >/dev/null; }
+          workspace=${INPUT_WORKSPACE:-main}
+          kernel=${INPUT_KERNEL:-piano-7.2.6}
+          if [ "$EVENT" = pull_request ]; then
+            if has xiaomi-piano-linux "$HEAD_REF"; then workspace=$HEAD_REF; fi
+            for ref in "$HEAD_REF" "piano/${HEAD_REF#*/}"; do
+              if has linux-piano "$ref"; then kernel=$ref; break; fi
+            done
+          fi
+          echo "workspace=$workspace kernel=$kernel"
+          echo "workspace=$workspace" >> "$GITHUB_OUTPUT"
+          echo "kernel=$kernel" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout orchestration
+        uses: actions/checkout@v5
+        with:
+          repository: bluseliu50/xiaomi-piano-linux
+          ref: ${{ steps.refs.outputs.workspace }}
+          path: workspace
+          persist-credentials: false
+
+      - name: Checkout this packaging revision
+        uses: actions/checkout@v5
+        with:
+          path: workspace/debian-piano
+          persist-credentials: false
+
+      - name: Checkout matching kernel source
+        uses: actions/checkout@v5
+        with:
+          repository: bluseliu50/linux-piano
+          ref: ${{ steps.refs.outputs.kernel }}
+          path: workspace/linux-piano
+          persist-credentials: false
+
+      - name: Checkout piano firmware
+        uses: actions/checkout@v5
+        with:
+          repository: bluseliu50/piano-firmware
+          path: workspace/piano-firmware
+          persist-credentials: false
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-              debootstrap debian-archive-keyring cpio gzip \
-              busybox-static dropbear-bin \
-              lz4 python3 zstd
+              clang lld llvm ccache make flex bison bc libssl-dev libelf-dev \
+              rsync cpio kmod device-tree-compiler debootstrap \
+              debian-archive-keyring curl openssh-client openssl \
+              e2fsprogs python3 zstd xz-utils lz4
+          df -h "$GITHUB_WORKSPACE"
 
-      - name: "Sanity: suite script available"
-        run: |
-          test -f /usr/share/debootstrap/scripts/trixie \
-            || { echo "::error::debootstrap on this runner lacks the trixie suite script"; exit 1; }
+      - name: Restore compiler cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: piano-gnome-clang-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            piano-gnome-clang-${{ runner.os }}-${{ runner.arch }}-
 
-      - name: Build initramfs
+      - name: Build matched GNOME image set with piano-firmware
+        working-directory: workspace
+        env:
+          SSH_PUBLIC_KEY: ${{ vars.PIANO_SSH_PUBLIC_KEY }}
         run: |
+          test -f linux-piano/arch/arm64/configs/piano_rootfs.config
+          test -x scripts/build-rootfs-image.sh
+          ccache --zero-stats
           mkdir -p out
-          # busybox-static installs /bin/busybox. Ubuntu splits dropbear
-          # binaries across /usr/sbin (dropbear) and /usr/bin (dropbearkey):
-          # stage them into one directory for the strict script interface.
-          mkdir -p /tmp/dropbear-staging
-          ln -sf /usr/sbin/dropbear /tmp/dropbear-staging/dropbear
-          ln -sf /usr/bin/dropbearkey /tmp/dropbear-staging/dropbearkey
-          scripts/build-initramfs.sh \
-            --busybox /bin --dropbear /tmp/dropbear-staging \
-            --output out/initramfs-piano.cpio.gz
-
-      - name: Build rootfs (firmware not included)
-        run: |
-          set +e
-          sudo scripts/build-rootfs.sh \
-            --suite trixie \
-            --output out/rootfs-build
-          rc=$?
-          set -e
-          if [ "$rc" -ne 0 ]; then
-            echo '::group::debootstrap.log (tail)'
-            sudo tail -n 150 out/rootfs-build/rootfs/debootstrap/debootstrap.log || true
-            echo '::endgroup::'
-            exit "$rc"
+          key_args=()
+          if [ -n "$SSH_PUBLIC_KEY" ]; then
+            printf '%s\n' "$SSH_PUBLIC_KEY" > out/authorized_keys
+            key_args=(--authorized-keys "$PWD/out/authorized_keys")
+          fi
+          debian-piano/scripts/fetch-arm64-tools.sh --output-dir out/arm64-tools
+          scripts/build-rootfs-image.sh --firmware-tree piano-firmware/firmware \
+              --jobs "$(nproc)" --output debian-piano/out/ci-image "${key_args[@]}"
+          echo 'Firmware comes from bluseliu50/piano-firmware; see its README compliance statement.' >> debian-piano/out/ci-image/MANIFEST.txt
+          if [ -z "$SSH_PUBLIC_KEY" ]; then
+            echo 'SMOKE ONLY: ephemeral access key is deliberately not published.' >> debian-piano/out/ci-image/MANIFEST.txt
           fi
 
-      - name: Package rootfs tarball
+      - name: Package flashable set and rootfs tarball
+        working-directory: workspace/debian-piano
         run: |
-          sudo tar --numeric-owner -C out/rootfs-build/rootfs \
-              -caf out/rootfs-trixie-arm64.tar.zst .
-          sudo chown -R "$(id -u):$(id -g)" out/rootfs-build
-          cp out/rootfs-build/build-manifest.txt out/
+          # The raw ext4 is only a local inspection aid; never ship it.
+          rm -f out/ci-image/userdata.raw.img
+          mkdir -p out/bundle out/rootfs-tar
+          zstd -T0 -10 --rm out/ci-image/userdata.img -o out/bundle/userdata.img.zst
+          cp out/ci-image/boot.img out/ci-image/dtbo.img \
+              out/ci-image/kernel.config out/ci-image/packages.txt \
+              out/ci-image/MANIFEST.txt out/ci-image/SOURCE-SHA256SUMS out/bundle/
+          (cd out/bundle && sha256sum ./* > SHA256SUMS)
+          sudo tar --numeric-owner --xattrs --acls -C out/ci-image/rootfs \
+              -I 'zstd -T0 -3' -cf out/rootfs-tar/rootfs-trixie-gnome-arm64.tar.zst .
+          (cd out/rootfs-tar && sha256sum ./* > SHA256SUMS)
+          du -sh out/bundle/* out/rootfs-tar/*
 
-      - name: Bootimg synthetic smoke (UNVERIFIED params gate)
-        run: |
-          # Synthetic fixture: the point is parameter passing + pack/unpack
-          # round-trip, NOT a bootable image. The gate test runs against a
-          # deliberately-UNVERIFIED fixture file; the repo's real params
-          # file carries CONFIRMED values from the stock ROM and must never satisfy
-          # --allow-unverified smoke inputs by accident.
-          mkdir -p out/fixture
-          echo 'UNVERIFIED:header_version=4'    >  out/fixture/unverified-params.env
-          echo 'UNVERIFIED:pagesize=4096'        >> out/fixture/unverified-params.env
-          echo 'UNVERIFIED:ramdisk_compression=gzip' >> out/fixture/unverified-params.env
-          head -c 65536 /dev/urandom > out/fixture/kernel
-          gunzip -c out/initramfs-piano.cpio.gz > out/fixture/ramdisk.cpio
-          cp out/initramfs-piano.cpio.gz out/fixture/initramfs.cpio.gz
-          # expect failure without --allow-unverified
-          if scripts/build-bootimg.sh \
-              --kernel out/fixture/kernel \
-              --ramdisk out/fixture/ramdisk.cpio \
-              --dtb out/fixture/initramfs.cpio.gz \
-              --header-version 4 --pagesize 4096 \
-              --ramdisk-compression gzip \
-              --output out/fixture/should-not-exist.img; then
-            echo "::error::UNVERIFIED gate failed to block a deliverable image"
-            exit 1
-          fi
-          # expect success in synthetic mode with forced prefix
-          scripts/build-bootimg.sh \
-            --kernel out/fixture/kernel \
-            --ramdisk out/fixture/ramdisk.cpio \
-            --dtb out/fixture/initramfs.cpio.gz \
-            --header-version 4 --pagesize 4096 \
-            --ramdisk-compression gzip \
-            --params-file out/fixture/unverified-params.env \
-            --output out/fixture/boot.img --allow-unverified
-          test -f out/fixture/synthetic-boot.img
+      - name: Compiler cache statistics
+        if: always()
+        run: ccache --show-stats
 
-      - name: Upload artifacts
+      # Saved even when the build fails, so a retry starts warm.
+      - name: Save compiler cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: piano-gnome-clang-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload flashable boot, dtbo and userdata set
         uses: actions/upload-artifact@v4
         with:
-          name: piano-build
-          path: |
-            out/initramfs-piano.cpio.gz
-            out/rootfs-trixie-arm64.tar.zst
-            out/build-manifest.txt
-            out/fixture/synthetic-boot.img
+          name: piano-gnome-flash-${{ github.sha }}
+          path: workspace/debian-piano/out/bundle/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+      - name: Upload rootfs tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: piano-gnome-rootfs-${{ github.sha }}
+          path: workspace/debian-piano/out/rootfs-tar/
+          if-no-files-found: error
+          compression-level: 0
           retention-days: 7
