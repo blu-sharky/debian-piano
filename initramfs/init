@@ -206,6 +206,20 @@ say "debug environment up: NCM 10.42.0.2, ssh root@10.42.0.2"
     echo "=== STAGE $1 ($2) ===" >> "$LOG"
   }
   snap() { dmesg > "/run/wlanbt-dmesg-$1.log" 2>&1; }
+  # BT liveness: one Read BD_ADDR round trip (a dead controller shows up as
+  # a missing BD_ADDR line and a "command tx timeout" in dmesg), plus the
+  # hci_qca in-band-sleep counters
+  bt_probe() {
+    echo "--- BT probe ($1, uptime $(cut -d' ' -f1 /proc/uptime)):" >> "$LOG"
+    piano-bt-scan 0 0 2>&1 | grep 'BD_ADDR' >> "$LOG" \
+      || echo "no BD_ADDR: controller not answering" >> "$LOG"
+    for f in ibs_sent_sleeps ibs_sent_wakes ibs_recv_wake_acks ibs_recv_sleeps \
+             ibs_recv_wakes tx_ibs_state rx_ibs_state; do
+      printf '%s=%s ' "$f" "$(cat /sys/kernel/debug/bluetooth/hci0/ibs/$f 2>/dev/null)"
+    done >> "$LOG"
+    echo >> "$LOG"
+  }
+  grep -q ' /sys/kernel/debug ' /proc/mounts || mount -t debugfs none /sys/kernel/debug
   sleep 8
 
   stage 1 "BT: shared-gpio proxy, WCN PMU, TLMM, hci_uart"
@@ -237,6 +251,12 @@ say "debug environment up: NCM 10.42.0.2, ssh root@10.42.0.2"
     echo "--- piano-bt-scan (hci0 up + 10 s LE scan):" >> "$LOG"
     piano-bt-scan 0 10 >> "$LOG" 2>&1
     echo "piano-bt-scan exit $?" >> "$LOG"
+    # does the controller survive idling (RF_CLK1 vote, in-band sleep)?
+    # probed before WLAN powers the other half of the combo
+    sleep 20; bt_probe "idle 20 s"
+    sleep 25; bt_probe "idle 45 s"
+    sleep 45; bt_probe "idle 90 s"
+    dmesg | grep -E 'hci0: (command tx timeout|Injecting|setup on UART)' >> "$LOG" 2>&1
   fi
   ls /sys/class/bluetooth/ >> "$LOG" 2>&1
   snap bt
@@ -290,6 +310,7 @@ say "debug environment up: NCM 10.42.0.2, ssh root@10.42.0.2"
     iw dev "$wdev" scan 2>&1 | grep -E '^BSS|SSID:|signal:|freq:' | head -60 >> "$LOG"
   fi
   dmesg | grep -iE 'ath12k|mhi|wlan|ieee80211|qrtr' >> "$LOG" 2>&1
+  [ "$bt_ok" = yes ] && bt_probe "after the WLAN phase"
   snap wlan
   echo "piano-wlanbt: stages complete (see /run/wlanbt-stages.log)" > /dev/kmsg
 ) &

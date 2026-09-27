@@ -184,11 +184,19 @@
 			 * WCN7850 rails plus the AOSS/PDC setup the stock cnss2
 			 * and btpower drivers send (qcom,pdc_init_table,
 			 * qcom,vreg_pdc_map and qcom,pmu_vreg_map of the stock
-			 * cnss-peach / bt_peach nodes).  RF_CLK1 is not voted
-			 * on the normal power-on path.
+			 * cnss-peach / bt_peach nodes).
+			 *
+			 * The reference clock is RPMh RF_CLK1, which stock
+			 * btpower votes for as long as BT is on ("bt_rf_clk1" in
+			 * bt_peach).  Without that vote the Brahma controller
+			 * came up and answered HCI while busy, then stopped
+			 * responding after some idle time without any host
+			 * sleep indication having been sent.
 			 */
 			wcn7850_pmu_ml: wcn7850-pmu {
 				compatible = "qcom,wcn7861-pmu";
+
+				clocks = <&rpmhcc_ml RPMH_RF_CLK1>;
 
 				qcom,qmp = <&aoss_qmp>;
 				qcom,pdc-init-table =
@@ -543,6 +551,17 @@
 			 * -ENODEV and fell back to the legacy host binding.
 			 */
 			phys = <&pcie0_phy_ml>;
+
+			/*
+			 * The stock cnss2 child also sits at devfn 0 and comes
+			 * first, so of_pci_find_child_device() gave the endpoint
+			 * its node instead of wifi@0: no PMU supplies, and the
+			 * Peach OL-CPR pwrseq lookup deferred forever.  An empty
+			 * reg takes it out of the devfn match.
+			 */
+			cnss_pci0 {
+				reg;
+			};
 
 			wifi@0 {
 				compatible = "pci17cb,110e";
