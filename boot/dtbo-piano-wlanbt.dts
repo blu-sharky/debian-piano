@@ -214,7 +214,7 @@
 					"VDDA_PCIE_1P2:s7i", "VDDA_PCIE_0P9:s7i";
 
 				pinctrl-names = "default";
-				pinctrl-0 = <&wlan_en_ml>;
+				pinctrl-0 = <&wlan_en_ml>, <&bt_en_ml>;
 
 				wlan-enable-gpios = <&piano_tlmm_ml 16 GPIO_ACTIVE_HIGH>;
 			/* Round 6: restored — the qcom-spmi-gpio chips are all
@@ -271,6 +271,25 @@
 						regulator-name = "vreg_pmu_pcie_1p8";
 					};
 				};
+			};
+		};
+	};
+
+	/*
+	 * BT_EN (stock bt_uwb_en): PM8550VE-F gpio3 as a normal output on
+	 * power source 1, as the stock tree configures it.  The bootloader
+	 * leaves it on vin-2.
+	 */
+	fragment@239 {
+		target = <&pm8550ve_f_gpios>;
+		__overlay__ {
+			bt_en_ml: bt-en-state {
+				pins = "gpio3";
+				function = "normal";
+				power-source = <1>;
+				output-enable;
+				input-disable;
+				bias-disable;
 			};
 		};
 	};
