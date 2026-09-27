@@ -3,7 +3,9 @@
 #
 # Usage:
 #   scripts/build-initramfs.sh --busybox DIR --dropbear DIR --output FILE
+#       [--mode test|rootfs]      (rootfs: /pianoinit, key-only rescue)
 #       [--authorized-keys FILE | --generate-access-key FILE]
+#       [--diagnostic]           (rootfs: pause before each storage step)
 #       [--root-password PASS]   (empty string = blank password login)
 #       [--module FILE]... [--kernel-version VER]
 #       [--firmware-dir DIR]      (copies DIR/novatek/*.bin)
@@ -66,9 +68,13 @@ MODULES=()
 KERNEL_VERSION=""
 FIRMWARE_DIR=""
 COMPRESS=gzip
+MODE='test'
+DIAGNOSTIC=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
+        --mode)               MODE=${2-}; shift 2 ;;
+        --diagnostic)          DIAGNOSTIC=1; shift ;;
         --busybox)             BUSYBOX_DIR=${2-}; shift 2 ;;
         --dropbear)            DROPBEAR_DIR=${2-}; shift 2 ;;
         --dropbear-tree)       DROPBEAR_TREE=${2-}; shift 2 ;;
@@ -107,6 +113,16 @@ fi
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 INIT_SRC="$REPO_ROOT/initramfs/init"
+case "$MODE" in
+    test) ;;
+    rootfs)
+        INIT_SRC="$REPO_ROOT/initramfs/rootfs-init"
+        [ -n "$AUTHORIZED_KEYS$GENERATE_KEY_OUT" ] || die 'rootfs mode requires SSH keys'
+        [ "$ROOT_PASSWORD_SET" = 0 ] || die 'rootfs rescue is key-only'
+        ;;
+    *) die '--mode must be test or rootfs' ;;
+esac
+[ "$DIAGNOSTIC" = 0 ] || [ "$MODE" = rootfs ] || die '--diagnostic requires --mode rootfs'
 TESTS_SRC="$REPO_ROOT/initramfs/tests"
 
 missing=()
@@ -119,6 +135,8 @@ if [ -n "$DROPBEAR_TREE" ]; then
     [ -x "$DROPBEAR_TREE/usr/sbin/dropbear" ] || missing+=("$DROPBEAR_TREE/usr/sbin/dropbear")
     [ -x "$DROPBEAR_TREE/usr/bin/dropbearkey" ] || missing+=("$DROPBEAR_TREE/usr/bin/dropbearkey")
     [ -e "$DROPBEAR_TREE/lib/ld-linux-aarch64.so.1" ] || missing+=("$DROPBEAR_TREE/lib/ld-linux-aarch64.so.1 (runtime closure)")
+    [ -e "$DROPBEAR_TREE/usr/lib/aarch64-linux-gnu/libgmp.so.10" ] \
+        || missing+=("libgmp.so.10 (refresh the arm64 tools tree)")
 else
     [ -x "$DROPBEAR_DIR/dropbear" ] || missing+=("$DROPBEAR_DIR/dropbear")
     [ -x "$DROPBEAR_DIR/dropbearkey" ] || missing+=("$DROPBEAR_DIR/dropbearkey")
@@ -167,6 +185,16 @@ install -m 0755 "$INIT_SRC" "$STAGING/init"
 # instead (runbook §7.3; without this twin the RAM boot panics on
 # "Failed to execute /beaconinit").
 install -m 0755 "$INIT_SRC" "$STAGING/beaconinit"
+if [ "$MODE" = rootfs ]; then
+    rm "$STAGING/beaconinit"
+    install -m 0755 "$INIT_SRC" "$STAGING/pianoinit"
+    install -D -m 0755 "$REPO_ROOT/rootfs/overlay/usr/lib/piano/usb-network" \
+        "$STAGING/usr/lib/piano/usb-network"
+    if [ "$DIAGNOSTIC" = 1 ]; then
+        mkdir -p "$STAGING/etc/piano"
+        touch "$STAGING/etc/piano/diagnostic"
+    fi
+fi
 install -m 0755 "$BUSYBOX_DIR/busybox" "$STAGING/bin/busybox"
 if [ -n "$DROPBEAR_TREE" ]; then
     cp -a "$DROPBEAR_TREE/usr" "$STAGING/"
@@ -250,6 +278,7 @@ done
 if [ -d "$TESTS_SRC" ]; then
     for t in "$TESTS_SRC"/*; do
         [ -f "$t" ] || continue
+        if [ "$MODE" = rootfs ] && [ "${t##*/}" != piano-qup-smmu ]; then continue; fi
         install -m 0755 "$t" "$STAGING/usr/bin/$(basename "$t")"
     done
 fi
@@ -343,12 +372,16 @@ fi
 # Sanity: the init script must carry the NCM gadget path. A missing or
 # renamed function here means the debug network cannot come up — refuse
 # to ship such an image instead of failing silently on the device.
-grep -q 'functions/ncm\.usb0' "$STAGING/init" \
-    || die "init does not create the NCM function (functions/ncm.usb0 missing)"
-grep -q 'usb_gadget/piano' "$STAGING/init" \
-    || die "init does not create the usb_gadget/piano gadget"
+USB_SCRIPT="$STAGING/init"
+[ "$MODE" != rootfs ] || USB_SCRIPT="$STAGING/usr/lib/piano/usb-network"
+grep -q 'functions/ncm\.usb0' "$USB_SCRIPT" \
+    || die "missing NCM gadget setup"
+grep -q 'usb_gadget/piano' "$USB_SCRIPT" \
+    || die "missing piano USB gadget setup"
 
-( cd "$STAGING" && find . -print0 | cpio --null -o --format=newc ) > "$OUTPUT.cpio" \
+# Archive IDs describe the target, not the unprivileged host builder.
+# Dropbear rejects root's authorized_keys if its parents have the host UID.
+( cd "$STAGING" && find . -print0 | cpio --null -o --format=newc --owner=0:0 ) > "$OUTPUT.cpio" \
     || die "cpio failed"
 
 case "$COMPRESS" in

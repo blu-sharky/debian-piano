@@ -42,9 +42,11 @@ die() {
 KERNEL_DIR=""
 OUTPUT_DIR=""
 DTBO_DTS=""
+MODE='test'
 
 while [ $# -gt 0 ]; do
     case "$1" in
+        --mode) MODE=${2-}; shift 2 ;;
         --kernel-dir) KERNEL_DIR=${2-}; shift 2 ;;
         --output-dir) OUTPUT_DIR=${2-}; shift 2 ;;
         --dtbo-source) DTBO_DTS=${2-}; shift 2 ;;
@@ -52,6 +54,7 @@ while [ $# -gt 0 ]; do
         *)            die "unknown option: $1" ;;
     esac
 done
+case "$MODE" in test|rootfs) ;; *) die '--mode must be test or rootfs' ;; esac
 
 for v in KERNEL_DIR OUTPUT_DIR; do
     [ -n "${!v}" ] || { echo "build-test-bootimg: missing required argument for $v" >&2; usage; }
@@ -134,7 +137,7 @@ DTBO_SIZE=$(stat -c%s "$OUTPUT_DIR/dtbo.img")
 
 # --- manifest -------------------------------------------------------------------
 {
-    echo "piano RAM-boot test image set"
+    echo "piano $MODE image set"
     echo "built:   $(date -u '+%Y-%m-%d %H:%M UTC')"
     echo "kernel: $KVER (initramfs embedded via CONFIG_INITRAMFS_SOURCE)"
     echo
@@ -144,13 +147,16 @@ DTBO_SIZE=$(stat -c%s "$OUTPUT_DIR/dtbo.img")
     echo
     echo "verified: boot.img unpacks byte-identical to the built Image."
     echo
-    echo "boot recipe (RAM boot; the only flash is dtbo_b):"
-    echo "  fastboot getvar current-slot   # must be b for slot-b compose"
-    echo "  fastboot set_active b"
-    echo "  fastboot flash dtbo_b dtbo.img"
-    echo "  fastboot boot boot.img"
-    echo "  # ~7-10 s later the NCM NIC appears; host side 10.42.0.1/24,"
-    echo "  # then: telnet 10.42.0.2 23  (busybox telnetd, no auth)"
+    if [ "$MODE" = test ]; then
+        echo "boot recipe (RAM boot; the only flash is dtbo_b):"
+        echo "  fastboot getvar current-slot   # must be b for slot-b compose"
+        echo "  fastboot flash dtbo_b dtbo.img"
+        echo "  fastboot boot boot.img"
+        echo "  # host 10.42.0.1/24; telnet 10.42.0.2 23 (unauthenticated test mode)"
+    else
+        echo "userdata/GNOME boot: requires the matching userdata.img from build-rootfs-image.sh."
+        echo "rdinit=/pianoinit; key-only USB SSH; never flash this as a standalone rootfs set."
+    fi
     echo
     echo "safety: vendor_boot/init_boot stay STOCK — custom vendor_boot,"
     echo "  v2 and v0 images are silently rejected by ABL (runbook §7.1)."

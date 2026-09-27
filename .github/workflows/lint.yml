@@ -31,6 +31,10 @@ jobs:
       - name: sh -n syntax checks
         run: |
           sh -n initramfs/init
+          sh -n initramfs/rootfs-init
+          for f in rootfs/overlay/usr/lib/piano/* rootfs/overlay/usr/local/bin/*; do
+            sh -n "$f"
+          done
           for f in scripts/*.sh; do
             bash -n "$f"
           done
@@ -38,6 +42,8 @@ jobs:
       - name: shellcheck
         run: |
           shellcheck scripts/*.sh
+          shellcheck -s sh initramfs/rootfs-init \
+              rootfs/overlay/usr/lib/piano/* rootfs/overlay/usr/local/bin/*
           # initramfs/init targets busybox ash (POSIX sh)
           shellcheck -s sh initramfs/init || {
             echo "::warning::initramfs/init has shellcheck findings under 'sh' mode";

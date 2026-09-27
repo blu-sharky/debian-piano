@@ -55,7 +55,7 @@ MIRROR=http://deb.debian.org/debian
 
 # dropbear-bin runtime closure (trixie arm64 Depends, measured 2026-09-19):
 # libc6 additionally depends on libgcc-s1.
-PKGS=(busybox-static dropbear-bin libc6 libcrypt1 libtomcrypt1 libtommath1 zlib1g libgcc-s1 iw libnl-3-200 libnl-genl-3-200 alsa-utils libasound2t64)
+PKGS=(busybox-static dropbear-bin libc6 libcrypt1 libtomcrypt1 libtommath1 libgmp10 zlib1g libgcc-s1 iw libnl-3-200 libnl-genl-3-200 alsa-utils libasound2t64)
 
 missing=()
 command -v curl >/dev/null 2>&1 || missing+=(curl)
@@ -125,7 +125,7 @@ for f in usr/sbin/dropbear usr/bin/dropbearkey; do
     [ -s "$WORK/x/dropbear-bin/$f" ] || die "dropbear-bin does not contain $f"
 done
 ( cd "$WORK/x/dropbear-bin" && tar -cf - usr/sbin usr/bin ) | ( cd "$TREE" && tar -xf - )
-for p in libc6 libcrypt1 libtomcrypt1 libtommath1 zlib1g libgcc-s1; do
+for p in libc6 libcrypt1 libtomcrypt1 libtommath1 libgmp10 zlib1g libgcc-s1; do
     if [ -d "$WORK/x/$p/usr/lib" ]; then
         ( cd "$WORK/x/$p" && tar -cf - usr/lib ) | ( cd "$TREE" && tar -xf - )
     fi

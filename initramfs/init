@@ -174,8 +174,8 @@ say "udhcpd launched (host: static 10.42.0.1/24)"
 
 # --- dropbear ---------------------------------------------------------------
 mkdir -p /etc/dropbear /root/.ssh
-# dropbear in the current initramfs is dynamically linked (no libc present),
-# so it cannot exec at all. Detect and fall back to busybox telnetd (static).
+# The staged dropbear tree includes its shared-library closure. Detect a
+# broken/stale tool tree; legacy test mode still keeps telnet below.
 if timeout 15 dropbearkey -t ed25519 -f /etc/dropbear/dropbear_ed25519_host_key >/run/dbk.log 2>&1; then
   dropbear -E -B -p 22 >/run/dropbear.log 2>&1 && say "dropbear up on :22"
 else
