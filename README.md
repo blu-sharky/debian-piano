@@ -35,7 +35,7 @@ Outputs in `debian-piano/out/gnome-image/`:
 - `userdata.img`: Android sparse ext4, default expanded size 12 GiB. Only
   allocated blocks are stored; free space is DONT_CARE (`ext4-to-simg.py`),
   because ABL writes img2simg-style zero FILL chunks slowly enough to look hung.
-- `userdata.raw.img`: equivalent raw ext4 for inspection/recovery.
+- `userdata.raw.img`: equivalent raw ext4 for local inspection (not uploaded by CI).
 - `kernel.config`, `packages.txt`, `MANIFEST.txt`: configuration, package
   versions, source revisions/working-tree diff hashes and artifact hashes.
 - `access-key` / `.pub`: generated SSH key unless `--authorized-keys FILE` is
@@ -54,12 +54,26 @@ userdata image. Never mix kernel-only output with an unrelated rootfs.
 The GNOME kernel uses a `-piano-gnome` release suffix, distinct from beacon
 test kernels. If reusing a base, `login.txt` remains in that base's directory.
 
-All device firmware is injected **locally**, by `stage-piano-firmware.sh`,
-from workspace `local/firmware/{odm/firmware,wifi-bt,non-hlos/image,btfm/image}`.
-The wifi-bt source manifest is verified; the complete staged set gets SHA256SUMS.
+### Firmware and compliance
+
+This repository contains **no firmware**; its code licences (MIT /
+GPL-2.0-only / Apache-2.0) do not extend to any firmware. Device firmware
+(WLAN, Bluetooth, touch) comes from the separate repository
+[bluseliu50/piano-firmware](https://github.com/bluseliu50/piano-firmware),
+whose README carries the compliance statement and per-file provenance:
+linux-firmware files under their redistribution licences, plus unmodified
+stock Xiaomi/Qualcomm/Novatek files without a redistribution licence,
+provided only so device owners can operate their hardware.
+
+- CI and `--firmware-tree DIR` use a piano-firmware checkout
+  (`DIR` = its `firmware/`), verified against its SHA256SUMS.
+- Without that option, `stage-piano-firmware.sh` builds the same set from a
+  local extraction in workspace `local/firmware/`; such images must not be
+  published. `--without-firmware` builds an image without any firmware.
+
 Modules and boot Image come from one kernel build, including a regenerated
-kernel release and a vermagic check for every installed module. Firmware,
-keys and local firmware-bearing image artifacts never enter git or public CI artifacts.
+kernel release and a vermagic check for every installed module. SSH private
+keys never enter git or CI artifacts.
 
 ### Desktop and access
 
@@ -165,14 +179,16 @@ default `--mode test` retains the legacy `/beaconinit` tests.
 `build-test-bootimg.sh --mode rootfs` shares the proven v4 pack/unpack gate.
 The generic `build-bootimg.sh` retains its stock-parameter provenance gate.
 
-CI now uploads one bundle containing `rootfs-trixie-gnome-arm64.tar.zst`,
-`userdata.img` (sparse ext4), `boot.img`, `dtbo.img`, kernel configuration,
-package versions, manifest and checksums, all from one build. It explicitly
-passes `--without-firmware`: touch/radios cannot work until the operator
-injects the local firmware. Never publish local firmware-bearing images.
+CI uploads two artifacts from one build: `piano-gnome-flash-<sha>`
+(`boot.img`, `dtbo.img`, `userdata.img.zst`, kernel configuration, package
+versions, manifest and checksums) and `piano-gnome-rootfs-<sha>` (the rootfs
+tarball). The raw ext4 is never uploaded. Decompress before flashing:
+`zstd -d userdata.img.zst`. Images include the piano-firmware set; the
+manifest records its revision and points to its compliance statement.
 
 The arm64 workflow uses `CC="ccache clang"` and a persistent 4 GiB compiler
-cache, with content-based compiler identity and per-run restore/save keys.
+cache, with content-based compiler identity and per-run keys; the cache is saved
+even when a build fails.
 The local orchestrator also uses ccache automatically when installed.
 `workflow_dispatch` accepts `workspace_ref` and `kernel_ref`; the selected
 umbrella revision must contain the orchestration script and the kernel

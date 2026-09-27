@@ -75,6 +75,13 @@ jobs:
           path: workspace/linux-piano
           persist-credentials: false
 
+      - name: Checkout piano firmware
+        uses: actions/checkout@v5
+        with:
+          repository: bluseliu50/piano-firmware
+          path: workspace/piano-firmware
+          persist-credentials: false
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -86,14 +93,14 @@ jobs:
           df -h "$GITHUB_WORKSPACE"
 
       - name: Restore compiler cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: .ccache
           key: piano-gnome-clang-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             piano-gnome-clang-${{ runner.os }}-${{ runner.arch }}-
 
-      - name: Build matched GNOME image set without proprietary firmware
+      - name: Build matched GNOME image set with piano-firmware
         working-directory: workspace
         env:
           SSH_PUBLIC_KEY: ${{ vars.PIANO_SSH_PUBLIC_KEY }}
@@ -108,36 +115,55 @@ jobs:
             key_args=(--authorized-keys "$PWD/out/authorized_keys")
           fi
           debian-piano/scripts/fetch-arm64-tools.sh --output-dir out/arm64-tools
-          scripts/build-rootfs-image.sh --without-firmware \
+          scripts/build-rootfs-image.sh --firmware-tree piano-firmware/firmware \
               --jobs "$(nproc)" --output debian-piano/out/ci-image "${key_args[@]}"
-          echo 'CI bundle contains no proprietary firmware. See firmware-status and README.' >> debian-piano/out/ci-image/MANIFEST.txt
+          echo 'Firmware comes from bluseliu50/piano-firmware; see its README compliance statement.' >> debian-piano/out/ci-image/MANIFEST.txt
           if [ -z "$SSH_PUBLIC_KEY" ]; then
             echo 'SMOKE ONLY: ephemeral access key is deliberately not published.' >> debian-piano/out/ci-image/MANIFEST.txt
           fi
 
-      - name: Package rootfs and matching boot files
+      - name: Package flashable set and rootfs tarball
         working-directory: workspace/debian-piano
         run: |
-          mkdir -p out/bundle
-          sudo tar --numeric-owner --xattrs --acls -C out/ci-image/rootfs \
-              -I 'zstd -T0 -3' -cf out/bundle/rootfs-trixie-gnome-arm64.tar.zst .
+          # The raw ext4 is only a local inspection aid; never ship it.
+          rm -f out/ci-image/userdata.raw.img
+          mkdir -p out/bundle out/rootfs-tar
+          zstd -T0 -10 --rm out/ci-image/userdata.img -o out/bundle/userdata.img.zst
           cp out/ci-image/boot.img out/ci-image/dtbo.img \
-              out/ci-image/userdata.img out/ci-image/kernel.config \
-              out/ci-image/packages.txt out/ci-image/MANIFEST.txt \
-              out/ci-image/SOURCE-SHA256SUMS out/bundle/
-          cd out/bundle
-          sha256sum rootfs-trixie-gnome-arm64.tar.zst boot.img dtbo.img \
-              userdata.img kernel.config packages.txt MANIFEST.txt SOURCE-SHA256SUMS > SHA256SUMS
+              out/ci-image/kernel.config out/ci-image/packages.txt \
+              out/ci-image/MANIFEST.txt out/ci-image/SOURCE-SHA256SUMS out/bundle/
+          (cd out/bundle && sha256sum ./* > SHA256SUMS)
+          sudo tar --numeric-owner --xattrs --acls -C out/ci-image/rootfs \
+              -I 'zstd -T0 -3' -cf out/rootfs-tar/rootfs-trixie-gnome-arm64.tar.zst .
+          (cd out/rootfs-tar && sha256sum ./* > SHA256SUMS)
+          du -sh out/bundle/* out/rootfs-tar/*
 
       - name: Compiler cache statistics
         if: always()
         run: ccache --show-stats
 
-      - name: Upload rootfs, boot and dtbo together
+      # Saved even when the build fails, so a retry starts warm.
+      - name: Save compiler cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: piano-gnome-clang-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload flashable boot, dtbo and userdata set
         uses: actions/upload-artifact@v4
         with:
-          name: piano-gnome-arm64-no-firmware-${{ github.sha }}
+          name: piano-gnome-flash-${{ github.sha }}
           path: workspace/debian-piano/out/bundle/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+      - name: Upload rootfs tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: piano-gnome-rootfs-${{ github.sha }}
+          path: workspace/debian-piano/out/rootfs-tar/
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
