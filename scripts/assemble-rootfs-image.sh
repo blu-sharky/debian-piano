@@ -17,14 +17,17 @@ while [ $# -gt 0 ]; do
     esac
 done
 [ "$(id -u)" = 0 ] || die 'run as root to preserve rootfs ownership'
-[ -x "$ROOTFS/sbin/init" ] && [ -f "$ROOTFS/../COMPLETE" ] || die 'incomplete rootfs build'
+[ -x "$ROOTFS/sbin/init" ] || die 'incomplete rootfs build'
+[ -f "$ROOTFS/../COMPLETE" ] || die 'incomplete rootfs build'
 [ ! -e "$ROOTFS/etc/piano/kernel-release" ] || die 'use a pristine base, not an already assembled rootfs'
 [ -d "$MODULES/lib/modules/$KVER" ] || die 'missing kernel module tree'
 [ -z "$FIRMWARE" ] || [ -d "$FIRMWARE/ath12k/PEACH/hw2.0" ] || die 'missing local firmware'
-[ -x "$TOUCH" ] && [ -x "$BUSYBOX" ] || die 'missing arm64 helpers'
+[ -x "$TOUCH" ] || die 'missing arm64 helpers'
+[ -x "$BUSYBOX" ] || die 'missing arm64 helpers'
 [ -n "$OUTPUT" ] || die '--output-dir required'
 mkdir -p "$OUTPUT"
-[ ! -e "$OUTPUT/userdata.img" ] && [ ! -e "$OUTPUT/userdata.raw.img" ] || die 'userdata output already exists'
+[ ! -e "$OUTPUT/userdata.img" ] || die 'userdata output already exists'
+[ ! -e "$OUTPUT/userdata.raw.img" ] || die 'userdata output already exists'
 [ ! -e "$OUTPUT/rootfs" ] || die 'assembled rootfs output already exists'
 # Do not contaminate the reusable, firmware-free base (especially across CI/local builds).
 cp -a --reflink=auto "$ROOTFS" "$OUTPUT/rootfs"
