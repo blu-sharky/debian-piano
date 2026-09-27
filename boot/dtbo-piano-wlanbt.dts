@@ -281,7 +281,8 @@
 	 * leaves it on vin-2.
 	 */
 	fragment@239 {
-		target = <&pm8550ve_f_gpios>;
+		/* by path: the pm8550ve_f_gpios label is local to this overlay */
+		target-path = "/soc/qcom,spmi@c42d000/qcom,pm8550ve@5/pinctrl@8800";
 		__overlay__ {
 			bt_en_ml: bt-en-state {
 				pins = "gpio3";
