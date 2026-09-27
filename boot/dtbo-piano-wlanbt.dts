@@ -567,6 +567,14 @@
 				compatible = "pci17cb,110e";
 				reg = <0x10000 0x0 0x0 0x0 0x0>;
 
+				/*
+				 * The Peach OTP carries no MAC address (the WMI
+				 * ready event reports zeroes; Android pushes one
+				 * from persist).  Locally administered fallback,
+				 * next to the Bluetooth one.
+				 */
+				local-mac-address = [02 50 49 41 4e 50];
+
 				vddrfacmn-supply = <&vreg_pmu_rfa_cmn_ml>;
 				vddaon-supply = <&vreg_pmu_aon_0p59_ml>;
 				vddwlcx-supply = <&vreg_pmu_wlcx_0p8_ml>;
