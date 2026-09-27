@@ -1,7 +1,5 @@
 [Unit]
 Description=Piano native display and GPU (msm) bring-up
-# Opt-in until the native display is validated: touch /etc/piano/native-display
-ConditionPathExists=/etc/piano/native-display
 # touch-start loads the mainline TLMM and GPI drivers the display chain uses
 After=systemd-udev-trigger.service piano-touch.service
 Before=gdm.service display-manager.service
