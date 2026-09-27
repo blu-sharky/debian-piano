@@ -235,7 +235,10 @@ say "debug environment up: NCM 10.42.0.2, ssh root@10.42.0.2"
   echo "--- AOSS QMP (PDC votes for the WCN PMU):" >> "$LOG"
   ls -l /sys/bus/platform/devices/c300000.power-controller/driver >> "$LOG" 2>&1
   bt_ok=no
-  modprobe hci_uart piano_retries=0 >> "$LOG" 2>&1
+  # piano_peri=10: arbitrate, then patch the Brahma PERI subsystem
+  # (brhperifw20.tlv + brhperinv20.bin, PERI reset, re-activate BT) before
+  # the BT rampatch; unpatched PERI ROM crashes about a minute after setup
+  modprobe hci_uart piano_retries=0 piano_peri=10 >> "$LOG" 2>&1
   # the uart14 probe (and with it hci0) only lands ~10 s later
   n=0
   while ! dmesg | grep -q 'hci0: setting up' && [ $n -lt 30 ]; do sleep 1; n=$((n + 1)); done
