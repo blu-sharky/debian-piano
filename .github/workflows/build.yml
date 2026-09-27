@@ -22,6 +22,10 @@ on:
         description: 'piano-firmware revision'
         default: main
         required: false
+      mesa_ref:
+        description: 'piano-mesa revision'
+        default: main
+        required: false
 
 permissions:
   contents: read
@@ -35,7 +39,7 @@ jobs:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_BASEDIR: ${{ github.workspace }}
       CCACHE_COMPILERCHECK: content
-      CCACHE_MAXSIZE: 4G
+      CCACHE_MAXSIZE: 8G
     steps:
       # A pull request builds against same-named companion branches in the
       # umbrella, kernel and firmware repos when they exist (kernel also:
@@ -50,25 +54,29 @@ jobs:
           INPUT_KERNEL: ${{ inputs.kernel_ref }}
           INPUT_PACKAGING: ${{ inputs.packaging_ref }}
           INPUT_FIRMWARE: ${{ inputs.firmware_ref }}
+          INPUT_MESA: ${{ inputs.mesa_ref }}
         run: |
           has() { git ls-remote --exit-code --heads "https://github.com/bluseliu50/$1" "refs/heads/$2" >/dev/null; }
           workspace=${INPUT_WORKSPACE:-main}
           kernel=${INPUT_KERNEL:-piano-7.2.6}
           packaging=${INPUT_PACKAGING:-$GITHUB_SHA}
           firmware=${INPUT_FIRMWARE:-main}
+          mesa=${INPUT_MESA:-main}
           if [ "$EVENT" = pull_request ]; then
             if has xiaomi-piano-linux "$HEAD_REF"; then workspace=$HEAD_REF; fi
             for ref in "$HEAD_REF" "piano/${HEAD_REF#*/}"; do
               if has linux-piano "$ref"; then kernel=$ref; break; fi
             done
             if has piano-firmware "$HEAD_REF"; then firmware=$HEAD_REF; fi
+            if has piano-mesa "$HEAD_REF"; then mesa=$HEAD_REF; fi
           fi
-          echo "workspace=$workspace kernel=$kernel packaging=$packaging firmware=$firmware"
+          echo "workspace=$workspace kernel=$kernel packaging=$packaging firmware=$firmware mesa=$mesa"
           {
             echo "workspace=$workspace"
             echo "kernel=$kernel"
             echo "packaging=$packaging"
             echo "firmware=$firmware"
+            echo "mesa=$mesa"
           } >> "$GITHUB_OUTPUT"
 
       - name: Checkout orchestration
@@ -102,6 +110,14 @@ jobs:
           path: workspace/piano-firmware
           persist-credentials: false
 
+      - name: Checkout piano Mesa
+        uses: actions/checkout@v5
+        with:
+          repository: bluseliu50/piano-mesa
+          ref: ${{ steps.refs.outputs.mesa }}
+          path: workspace/piano-mesa
+          persist-credentials: false
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -120,6 +136,14 @@ jobs:
           restore-keys: |
             piano-gnome-clang-${{ runner.os }}-${{ runner.arch }}-
 
+      # Mesa shares the compiler cache with the kernel build (one cache,
+      # one save below); piano-mesa's own CI keeps a separate one.
+      - name: Build piano Mesa
+        working-directory: workspace
+        run: |
+          piano-mesa/scripts/build-in-container.sh out/mesa "$CCACHE_DIR"
+          echo "piano-mesa $(git -C piano-mesa rev-parse HEAD)" > out/mesa/SOURCE
+
       - name: Build matched GNOME image set with piano-firmware
         working-directory: workspace
         env:
@@ -136,7 +160,9 @@ jobs:
           fi
           debian-piano/scripts/fetch-arm64-tools.sh --output-dir out/arm64-tools
           scripts/build-rootfs-image.sh --firmware-tree piano-firmware/firmware \
+              --mesa-dir out/mesa/runtime \
               --jobs "$(nproc)" --output debian-piano/out/ci-image "${key_args[@]}"
+          cat out/mesa/SOURCE >> debian-piano/out/ci-image/MANIFEST.txt
           echo 'Firmware comes from bluseliu50/piano-firmware; see its README compliance statement.' >> debian-piano/out/ci-image/MANIFEST.txt
           if [ -z "$SSH_PUBLIC_KEY" ]; then
             echo 'SMOKE ONLY: ephemeral access key is deliberately not published.' >> debian-piano/out/ci-image/MANIFEST.txt
