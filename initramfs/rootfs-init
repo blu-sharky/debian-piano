@@ -12,7 +12,8 @@ mount -t sysfs sysfs /sys
 mount -t tmpfs -o mode=0755 tmpfs /run
 log() {
     echo "piano: $*" | tee -a /run/piano-boot.log
-    [ ! -c /dev/kmsg ] || echo "<6>piano: $*" > /dev/kmsg
+    # Level 3 so the steps show on the console: cold boots have no USB/SSH.
+    [ ! -c /dev/kmsg ] || echo "<3>piano: $*" > /dev/kmsg
 }
 start_ssh() {
     [ ! -s /run/piano-dropbear.pid ] || return 0
@@ -34,7 +35,10 @@ log 'INIT: starting USB NCM before storage initialization'
 # On a cold boot from boot_b, ABL leaves USB unpowered and dwc3 fails its
 # soft reset; only fastboot RAM boots inherit a working controller. The
 # debug network is therefore best effort and never blocks the Debian boot.
-if /usr/lib/piano/usb-network > /run/piano-usb.log 2>&1 && start_ssh; then
+# dwc3 is built in and has already probed: when it failed (cold boot) skip
+# the 120 s wait for a device controller that will never appear.
+if [ -e /sys/bus/platform/drivers/dwc3-qcom/a600000.ssusb ] &&
+   /usr/lib/piano/usb-network > /run/piano-usb.log 2>&1 && start_ssh; then
     log 'NCM_READY: key-only root SSH at 10.42.0.2; UFS drivers still unloaded'
 else
     log 'WARN: USB NCM/SSH unavailable (see /run/piano-usb.log); continuing without it'
