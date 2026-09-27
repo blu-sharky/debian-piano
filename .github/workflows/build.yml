@@ -14,6 +14,14 @@ on:
         description: 'linux-piano revision containing piano_rootfs.config'
         default: piano-7.2.6
         required: true
+      packaging_ref:
+        description: 'debian-piano revision to build (empty = the ref this workflow runs from)'
+        default: ''
+        required: false
+      firmware_ref:
+        description: 'piano-firmware revision'
+        default: main
+        required: false
 
 permissions:
   contents: read
@@ -30,8 +38,9 @@ jobs:
       CCACHE_MAXSIZE: 4G
     steps:
       # A pull request builds against same-named companion branches in the
-      # umbrella and kernel repos when they exist (kernel also: piano/<topic>),
-      # so cross-repo changes are testable before any of them merges.
+      # umbrella, kernel and firmware repos when they exist (kernel also:
+      # piano/<topic>), so cross-repo changes are testable before any of them
+      # merges. A manual run from main can point every repo at any branch.
       - name: Resolve companion refs
         id: refs
         env:
@@ -39,19 +48,28 @@ jobs:
           HEAD_REF: ${{ github.head_ref }}
           INPUT_WORKSPACE: ${{ inputs.workspace_ref }}
           INPUT_KERNEL: ${{ inputs.kernel_ref }}
+          INPUT_PACKAGING: ${{ inputs.packaging_ref }}
+          INPUT_FIRMWARE: ${{ inputs.firmware_ref }}
         run: |
           has() { git ls-remote --exit-code --heads "https://github.com/bluseliu50/$1" "refs/heads/$2" >/dev/null; }
           workspace=${INPUT_WORKSPACE:-main}
           kernel=${INPUT_KERNEL:-piano-7.2.6}
+          packaging=${INPUT_PACKAGING:-$GITHUB_SHA}
+          firmware=${INPUT_FIRMWARE:-main}
           if [ "$EVENT" = pull_request ]; then
             if has xiaomi-piano-linux "$HEAD_REF"; then workspace=$HEAD_REF; fi
             for ref in "$HEAD_REF" "piano/${HEAD_REF#*/}"; do
               if has linux-piano "$ref"; then kernel=$ref; break; fi
             done
+            if has piano-firmware "$HEAD_REF"; then firmware=$HEAD_REF; fi
           fi
-          echo "workspace=$workspace kernel=$kernel"
-          echo "workspace=$workspace" >> "$GITHUB_OUTPUT"
-          echo "kernel=$kernel" >> "$GITHUB_OUTPUT"
+          echo "workspace=$workspace kernel=$kernel packaging=$packaging firmware=$firmware"
+          {
+            echo "workspace=$workspace"
+            echo "kernel=$kernel"
+            echo "packaging=$packaging"
+            echo "firmware=$firmware"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Checkout orchestration
         uses: actions/checkout@v5
@@ -61,9 +79,10 @@ jobs:
           path: workspace
           persist-credentials: false
 
-      - name: Checkout this packaging revision
+      - name: Checkout packaging revision
         uses: actions/checkout@v5
         with:
+          ref: ${{ steps.refs.outputs.packaging }}
           path: workspace/debian-piano
           persist-credentials: false
 
@@ -79,6 +98,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: bluseliu50/piano-firmware
+          ref: ${{ steps.refs.outputs.firmware }}
           path: workspace/piano-firmware
           persist-credentials: false
 
