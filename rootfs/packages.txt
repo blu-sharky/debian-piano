@@ -11,6 +11,8 @@ wireless-regdb
 iw
 bluez
 openssh-server
+# Marks the booted A/B slot successful so ABL keeps slot b bootable.
+qbootctl
 iproute2
 iputils-ping
 bind9-dnsutils

@@ -31,9 +31,14 @@ rescue() {
 # A PHY module alone did not prevent the built-in host's early probe.
 # Both UFS drivers are now modules, and no register access precedes NCM.
 log 'INIT: starting USB NCM before storage initialization'
-/usr/lib/piano/usb-network > /run/piano-usb.log 2>&1 || rescue 'USB network setup failed; see /run/piano-usb.log'
-start_ssh || rescue 'SSH startup failed; see /run/piano-dropbear.log'
-log 'NCM_READY: key-only root SSH at 10.42.0.2; UFS drivers still unloaded'
+# On a cold boot from boot_b, ABL leaves USB unpowered and dwc3 fails its
+# soft reset; only fastboot RAM boots inherit a working controller. The
+# debug network is therefore best effort and never blocks the Debian boot.
+if /usr/lib/piano/usb-network > /run/piano-usb.log 2>&1 && start_ssh; then
+    log 'NCM_READY: key-only root SSH at 10.42.0.2; UFS drivers still unloaded'
+else
+    log 'WARN: USB NCM/SSH unavailable (see /run/piano-usb.log); continuing without it'
+fi
 diagnostic=0
 [ ! -f /etc/piano/diagnostic ] || diagnostic=1
 step() {
@@ -103,8 +108,10 @@ log 'DONE mount-root (matching Debian init and kernel release found)'
 step switch-root
 # Leave the gadget/address configured for piano-usb.service, but release
 # the initramfs SSH listener before Debian sshd starts on the same port.
-kill "$(cat /run/piano-dropbear.pid)" || rescue 'cannot stop initramfs SSH'
-rm /run/piano-dropbear.pid
+if [ -s /run/piano-dropbear.pid ]; then
+    kill "$(cat /run/piano-dropbear.pid)" || rescue 'cannot stop initramfs SSH'
+    rm /run/piano-dropbear.pid
+fi
 for dir in dev proc sys run; do
     [ -d "/sysroot/$dir" ] || rescue "missing rootfs /$dir"
 done

@@ -147,6 +147,10 @@ jobs:
         run: |
           # The raw ext4 is only a local inspection aid; never ship it.
           rm -f out/ci-image/userdata.raw.img
+          # Cold boots from boot_b need a signed AVB footer (stock vbmeta
+          # chains boot); RAM boots accept the padded image unchanged.
+          scripts/sign-boot-avb.sh out/ci-image/boot.img
+          echo "boot.img: AVB-signed after build; flashed sha256 $(sha256sum out/ci-image/boot.img | cut -d' ' -f1)" >> out/ci-image/MANIFEST.txt
           mkdir -p out/bundle out/rootfs-tar
           zstd -T0 -10 --rm out/ci-image/userdata.img -o out/bundle/userdata.img.zst
           cp out/ci-image/boot.img out/ci-image/dtbo.img \
