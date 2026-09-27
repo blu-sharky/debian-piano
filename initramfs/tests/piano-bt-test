@@ -54,7 +54,11 @@ if [ -e /sys/class/bluetooth/hci0 ]; then
             *) [ -r "$f" ] && [ ! -d "$f" ] && echo "    $(basename "$f") = $(cat "$f" 2>/dev/null)" ;;
         esac
     done
-    echo "  => controller alive: HCI reset + QCA firmware download succeeded"
+    if dmesg 2>/dev/null | grep 'Bluetooth: hci0:' | tail -1 | grep -qiE 'fail|retry|timeout|error'; then
+        echo "  => hci0 registered, but the QCA setup failed (see dmesg below)"
+    else
+        echo "  => controller alive: QCA firmware download completed"
+    fi
 else
     echo "  no hci0 — controller did not come up"
 fi

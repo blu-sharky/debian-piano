@@ -40,11 +40,16 @@ if mount -t pstore pstore /sys/fs/pstore 2>/dev/null; then
   fi
 fi
 
-# --- apps SMMU: let QUP1 GPI DMA through ---------------------------------------
-# ABL leaves the apps SMMU enabled with unmatched streams faulting; the touch
-# SPI DMA (streams 0xb6/0xa3) would reset the SoC on its first transfer.
-# Match them now, before anything can load the SPI stack.
-piano-qup-smmu > /run/qup-smmu.log 2>&1 || say "WARN piano-qup-smmu failed (see /run/qup-smmu.log)"
+# --- apps SMMU: let the QUP1, QUP2 and PCIe DMA through -----------------------
+# ABL leaves the apps SMMU enabled with unmatched streams faulting (USFCFG=1).
+# Matched here, routed like the USB pass-through context:
+#   0xb6 0xa3  QUP1 GPI / SE   (touch SPI DMA)
+#   0x436 0x423 QUP2 GPI / SE  (uart14 SE DMA mode, BT HCI traffic)
+#   0x1400/0x7f PCIe0          (peach WLAN: stock smmu-sid-base 0x1400; the
+#                               iommu-map is dropped, so the BDF-to-SID
+#                               table is unprogrammed — cover the range)
+piano-qup-smmu 0xb6 0xa3 0x1400/0x7f 0x436 0x423 > /run/qup-smmu.log 2>&1 \
+  || say "WARN piano-qup-smmu failed (see /run/qup-smmu.log)"
 
 # --- framebuffer beacon (bounded) -------------------------------------------
 # Alternate white/black fills of the whole splash framebuffer so userspace
@@ -181,6 +186,139 @@ busybox telnetd -p 23 -l /bin/sh && say "telnetd up on :23" || say "WARN telnetd
 busybox httpd -p 8080 -h /run && say "httpd serving /run on :8080" || say "WARN httpd failed"
 
 say "debug environment up: NCM 10.42.0.2, ssh root@10.42.0.2"
+
+# --- WLAN/BT staged bring-up (peach combo), background -----------------------
+# One subsystem at a time, a kmsg marker before each step (pstore keeps the
+# console of a boot that dies) and everything collected under /run (served
+# on http :8080):
+#   /run/wlanbt-stages.log   step-by-step evidence
+#   /run/wlanbt-dmesg-*.log  full dmesg after each phase
+# Bluetooth goes first and on its own: phy-qcom-qmp-pcie is not loaded until
+# the WLAN phase, so pcie0 (built-in, its root port references that PHY)
+# stays unprobed while TLMM, the PMU and hci_qca come up.
+# `touch /run/wlan-hold` before the WLAN phase starts parks the ladder there
+# until the file is removed (the BT evidence can be fetched first).
+(
+  LOG=/run/wlanbt-stages.log
+  : > "$LOG"
+  stage() {
+    echo "piano-wlanbt: STAGE $1 ($2)" > /dev/kmsg
+    echo "=== STAGE $1 ($2) ===" >> "$LOG"
+  }
+  snap() { dmesg > "/run/wlanbt-dmesg-$1.log" 2>&1; }
+  # BT liveness: one Read BD_ADDR round trip (a dead controller shows up as
+  # a missing BD_ADDR line and a "command tx timeout" in dmesg), plus the
+  # hci_qca in-band-sleep counters
+  bt_probe() {
+    echo "--- BT probe ($1, uptime $(cut -d' ' -f1 /proc/uptime)):" >> "$LOG"
+    piano-bt-scan 0 0 2>&1 | grep 'BD_ADDR' >> "$LOG" \
+      || echo "no BD_ADDR: controller not answering" >> "$LOG"
+    for f in ibs_sent_sleeps ibs_sent_wakes ibs_recv_wake_acks ibs_recv_sleeps \
+             ibs_recv_wakes tx_ibs_state rx_ibs_state; do
+      printf '%s=%s ' "$f" "$(cat /sys/kernel/debug/bluetooth/hci0/ibs/$f 2>/dev/null)"
+    done >> "$LOG"
+    echo >> "$LOG"
+  }
+  grep -q ' /sys/kernel/debug ' /proc/mounts || mount -t debugfs none /sys/kernel/debug
+  sleep 8
+
+  stage 1 "BT: shared-gpio proxy, WCN PMU, TLMM, hci_uart"
+  modprobe gpio_shared_proxy >> "$LOG" 2>&1
+  modprobe pwrseq_qcom_wcn >> "$LOG" 2>&1
+  modprobe pinctrl_sm8750 >> "$LOG" 2>&1
+  sleep 3
+  ls -l /sys/bus/platform/devices/wcn7850-pmu/driver >> "$LOG" 2>&1
+  ls -l /sys/bus/platform/devices/898000.serial/driver >> "$LOG" 2>&1
+  # One setup attempt, no power-cycle retries (each retry costs ~30 s of
+  # HCI timeouts).  Brahma v2 downloads at 115200 with paced segments
+  # (~25 s for the rampatch), as the stock HAL does.
+  echo "--- AOSS QMP (PDC votes for the WCN PMU):" >> "$LOG"
+  ls -l /sys/bus/platform/devices/c300000.power-controller/driver >> "$LOG" 2>&1
+  bt_ok=no
+  # piano_peri=106: PERI to 8 Mbaud, arbitrate, patch the Brahma PERI subsystem
+  # (brhperifw20.tlv + brhperinv20.bin, PERI reset, re-activate BT) before
+  # the BT rampatch, then wake BT and re-read its version (unpatched PERI
+  # ROM crashes about a minute after setup)
+  modprobe hci_uart piano_retries=0 piano_peri=106 >> "$LOG" 2>&1
+  # the uart14 probe (and with it hci0) only lands ~10 s later
+  n=0
+  while ! dmesg | grep -q 'hci0: setting up' && [ $n -lt 30 ]; do sleep 1; n=$((n + 1)); done
+  n=0
+  while [ $n -lt 75 ]; do
+    if dmesg | grep -q 'setup on UART is completed'; then bt_ok=yes; break; fi
+    dmesg | grep -qE 'Failed to request file|setup failed|Retry BT power ON' && break
+    sleep 1; n=$((n + 1))
+  done
+  dmesg | grep -iE 'bluetooth|hci|qca|piano-dbg: baud|serdev|898000' >> "$LOG" 2>&1
+  echo "--- BT result: ${bt_ok} ---" >> "$LOG"
+  if [ "$bt_ok" = yes ]; then
+    echo "--- piano-bt-scan (hci0 up + 10 s LE scan):" >> "$LOG"
+    piano-bt-scan 0 10 >> "$LOG" 2>&1
+    echo "piano-bt-scan exit $?" >> "$LOG"
+    # does the controller survive idling (RF_CLK1 vote, in-band sleep)?
+    # probed before WLAN powers the other half of the combo
+    sleep 20; bt_probe "idle 20 s"
+    sleep 25; bt_probe "idle 45 s"
+    sleep 45; bt_probe "idle 90 s"
+    dmesg | grep -E 'hci0: (command tx timeout|Injecting|setup on UART)' >> "$LOG" 2>&1
+  fi
+  ls /sys/class/bluetooth/ >> "$LOG" 2>&1
+  snap bt
+  echo "piano-wlanbt: BT phase done (setup completed: $bt_ok)" > /dev/kmsg
+
+  echo "--- WLAN phase in 10 s (touch /run/wlan-hold to park it) ---" >> "$LOG"
+  sleep 10
+  while [ -e /run/wlan-hold ]; do sleep 2; done
+
+  stage 2 "WLAN: pci-pwrctrl-pwrseq, then the PCIe PHY (starts the pcie0 host probe)"
+  piano-qup-smmu --check 0x1400/0x7f >> "$LOG" 2>&1
+  modprobe pci_pwrctrl_pwrseq >> "$LOG" 2>&1
+  sleep 1
+  # PCIe0 reference clock: TCSR_PCIE_0_CLKREF_EN = bit 0 of 0x0f204008
+  # (tcsrcc-sm8750/tcsrcc-sun offset 0x0).  The overlay's tcsrcc sits on
+  # the wrong block (0x1fc0000), so the PHY gets a dummy clock and the
+  # real enable is set here.
+  echo "--- TCSR_PCIE_0_CLKREF_EN before/after:" >> "$LOG"
+  v=$(devmem 0x0f204008 32)
+  echo "$v" >> "$LOG"
+  devmem 0x0f204008 32 $((v | 1))
+  devmem 0x0f204008 32 >> "$LOG" 2>&1
+  echo "piano-wlanbt: pcie0 clkref $v -> $(devmem 0x0f204008 32)" > /dev/kmsg
+  # piano_skip_bcr: R16 reset on the core BCR assert, R18 on the next
+  # (PHY) BCR assert; pcie-qcom already skips the core one on sm8750
+  modprobe phy_qcom_qmp_pcie piano_skip_bcr=1 >> "$LOG" 2>&1
+  sleep 8
+  dmesg | grep -iE 'qcom-pcie|1c00000|pci|phy-qcom|pwrctrl|pwrseq' >> "$LOG" 2>&1
+  for d in /sys/bus/pci/devices/*; do
+    [ -r "$d/vendor" ] && echo "pci $(basename "$d"): $(cat "$d/vendor"):$(cat "$d/device")" >> "$LOG"
+  done
+  snap pcie
+
+  stage 3 "WLAN: qrtr + qrtr-mhi (QMI transport), ath12k (firmware + wiphy)"
+  # ath12k talks QMI over the MHI IPCR channel; nothing autoloads the
+  # socket family or the MHI client driver in this initramfs.
+  modprobe qrtr >> "$LOG" 2>&1
+  modprobe qrtr_mhi >> "$LOG" 2>&1
+  modprobe ath12k_wifi7 >> "$LOG" 2>&1
+  n=0
+  while [ -z "$(ls /sys/class/ieee80211/ 2>/dev/null)" ] && [ $n -lt 30 ]; do sleep 1; n=$((n + 1)); done
+  sleep 3
+  ls /sys/class/ieee80211/ >> "$LOG" 2>&1
+  iw dev >> "$LOG" 2>&1
+  # scan proof: bring the first wireless netdev up and list what it hears
+  wdev=$(ls /sys/class/net | while read -r d; do [ -d /sys/class/net/$d/wireless ] && echo "$d"; done | head -1)
+  if [ -n "$wdev" ]; then
+    ip link set "$wdev" up >> "$LOG" 2>&1
+    sleep 2
+    echo "--- scan on $wdev:" >> "$LOG"
+    iw dev "$wdev" scan 2>&1 | grep -E '^BSS|SSID:|signal:|freq:' | head -60 >> "$LOG"
+  fi
+  dmesg | grep -iE 'ath12k|mhi|wlan|ieee80211|qrtr' >> "$LOG" 2>&1
+  [ "$bt_ok" = yes ] && bt_probe "after the WLAN phase"
+  snap wlan
+  echo "piano-wlanbt: stages complete (see /run/wlanbt-stages.log)" > /dev/kmsg
+) &
+
 
 # Keep the display-safe image passive after NCM setup.  ADSP modules and
 # firmware remain staged for offline development, but no remoteproc, QRTR, or

@@ -29,6 +29,8 @@
 #   --touch-view FILE       installs the static THP frame viewer
 #                           (scripts/build-touch-view.sh) as
 #                           /usr/bin/piano-touch-view
+#   --bt-scan FILE          installs the static raw-HCI LE scanner as
+#                           /usr/bin/piano-bt-scan
 #
 # Any executable under initramfs/tests/ is installed into /usr/bin
 # (piano-tests, piano-touch-test, piano-display-test, piano-collect).
@@ -54,6 +56,7 @@ DROPBEAR_TREE=""
 IW_TREE=""
 PD_LOCATOR=""
 TOUCH_VIEW=""
+BT_SCAN=""
 APLAY_TREE=""
 AUTHORIZED_KEYS=""
 GENERATE_KEY_OUT=""
@@ -72,6 +75,7 @@ while [ $# -gt 0 ]; do
         --iw-tree)             IW_TREE=${2-}; shift 2 ;;
         --pd-locator)          PD_LOCATOR=${2-}; shift 2 ;;
         --touch-view)          TOUCH_VIEW=${2-}; shift 2 ;;
+        --bt-scan)             BT_SCAN=${2-}; shift 2 ;;
         --aplay-tree)          APLAY_TREE=${2-}; shift 2 ;;
         --output)              OUTPUT=${2-}; shift 2 ;;
         --authorized-keys)     AUTHORIZED_KEYS=${2-}; shift 2 ;;
@@ -222,6 +226,13 @@ if [ -n "$TOUCH_VIEW" ]; then
     echo "build-initramfs: installed piano-touch-view from $TOUCH_VIEW"
 fi
 
+# --- piano-bt-scan (raw-HCI LE scanner, Bluetooth proof) ----------------------
+if [ -n "$BT_SCAN" ]; then
+    file "$BT_SCAN" | grep -q 'ARM aarch64.*statically linked' \
+        || die "bt-scan is not a static arm64 ELF: $BT_SCAN"
+    install -m 0755 "$BT_SCAN" "$STAGING/usr/bin/piano-bt-scan"
+fi
+
 # --- iw (WLAN nl80211 client) ------------------------------------------------
 if [ -n "$IW_TREE" ]; then
     [ -x "$IW_TREE/usr/sbin/iw" ] || die "no iw binary at $IW_TREE/usr/sbin/iw"
@@ -277,7 +288,10 @@ if [ "${#MODULES[@]}" -gt 0 ]; then
     command -v "$STRIP" >/dev/null 2>&1 || STRIP="strip"
     for m in "${MODULES[@]}"; do
         [ -n "$m" ] || continue
-        rel=${m##*out/}
+        # normalise to the standard kernel/<subdir>/<name>.ko layout no
+        # matter where the .ko came from (kernel build dir or a
+        # modules_install closure root)
+        rel="kernel/${m##*/kernel/}"
         d="$MODDIR/$(dirname "$rel")"
         mkdir -p "$d"
         # Strip debug sections: the kernel builds modules unstripped and the
