@@ -278,7 +278,10 @@
 	/*
 	 * BT_EN (stock bt_uwb_en): PM8550VE-F gpio3 as a normal output on
 	 * power source 1, as the stock tree configures it.  The bootloader
-	 * leaves it on vin-2.
+	 * leaves it on vin-2, where the Brahma controller still boots and
+	 * answers HCI but its radio is effectively disconnected: a few
+	 * advertising reports per 10 s scan, and invisible to a phone next to
+	 * it.  On power source 1 the same scan sees hundreds of reports.
 	 */
 	fragment@239 {
 		/* by path: the pm8550ve_f_gpios label is local to this overlay */
