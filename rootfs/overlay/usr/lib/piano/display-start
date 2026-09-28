@@ -92,9 +92,14 @@ stage5() {
     modprobe panel_novatek_nt36532
     probe_again ae00000.display-subsystem
     wait_bound msm_dpu ae01000.display-controller 30 || die 'DPU not bound'
+    # The first DSI PLL lock attempt after a cold dispcc enable can fail
+    # for a while: the kit device log (out/display-kit/logs/kmsg-stage5.log)
+    # shows five "DSI PLL(0) lock failed" lines, a 30 s timeout FAIL, and
+    # the output enabled by itself ~80 s in - before the manual re-run.
+    # Wait past the transient instead of declaring failure at 30 s.
     n=0
     until grep -qx enabled /sys/class/drm/card*-DSI-1/enabled 2>/dev/null; do
-        [ "$n" -lt 30 ] || die 'DSI output never enabled'
+        [ "$n" -lt 150 ] || die 'DSI output never enabled'
         sleep 1; n=$((n + 1))
     done
 }

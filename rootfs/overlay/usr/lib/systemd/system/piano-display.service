@@ -7,6 +7,6 @@ Before=gdm.service display-manager.service
 Type=oneshot
 ExecStart=/usr/lib/piano/display-start --all
 RemainAfterExit=yes
-TimeoutStartSec=180
+TimeoutStartSec=240
 [Install]
 WantedBy=graphical.target
