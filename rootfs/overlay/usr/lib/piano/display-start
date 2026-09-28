@@ -118,8 +118,8 @@ run() {
 case "${1-}" in
     --stage) run "${2:?stage number}" ;;
     --all)
-        if [ ! -e /etc/piano/native-display ]; then
-            say 'disabled (opt-in): sudo touch /etc/piano/native-display to enable at boot'
+        if [ -e /etc/piano/native-display-off ]; then
+            say 'disabled: /etc/piano/native-display-off present; native display stays off'
             exit 0
         fi
         i=1
