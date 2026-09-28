@@ -165,7 +165,7 @@ jobs:
           cat out/mesa/SOURCE >> debian-piano/out/ci-image/MANIFEST.txt
           echo 'Firmware comes from blu-sharky/piano-firmware; see its README compliance statement.' >> debian-piano/out/ci-image/MANIFEST.txt
           if [ -z "$SSH_PUBLIC_KEY" ]; then
-            echo 'SMOKE ONLY: ephemeral access key is deliberately not published.' >> debian-piano/out/ci-image/MANIFEST.txt
+            echo 'Access: per-build random key; private half published in the piano-access-key artifact.' >> debian-piano/out/ci-image/MANIFEST.txt
           fi
 
       - name: Package flashable set and rootfs tarball
@@ -187,6 +187,27 @@ jobs:
               -I 'zstd -T0 -3' -cf out/rootfs-tar/rootfs-trixie-gnome-arm64.tar.zst .
           (cd out/rootfs-tar && sha256sum ./* > SHA256SUMS)
           du -sh out/bundle/* out/rootfs-tar/*
+
+      - name: Publish ephemeral access key
+        if: ${{ vars.PIANO_SSH_PUBLIC_KEY == '' }}
+        working-directory: workspace/debian-piano
+        run: |
+          mkdir -p out/access-key
+          cp out/ci-image/access-key out/ci-image/access-key.pub out/access-key/
+          {
+            echo '## Ephemeral SSH access key'
+            echo 'This build generated a fresh random key (no PIANO_SSH_PUBLIC_KEY variable set).'
+            echo "Private half: piano-access-key-$GITHUB_SHA artifact. Then:"
+            echo '```'
+            echo 'chmod 600 access-key'
+            echo 'ssh -i access-key piano@10.42.0.2'
+            echo '```'
+            echo 'Public key (authorized in this image):'
+            echo '```'
+            cat out/ci-image/access-key.pub
+            ssh-keygen -lf out/ci-image/access-key.pub
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Compiler cache statistics
         if: always()
@@ -216,4 +237,13 @@ jobs:
           path: workspace/debian-piano/out/rootfs-tar/
           if-no-files-found: error
           compression-level: 0
+          retention-days: 7
+
+      - name: Upload ephemeral access key
+        if: ${{ vars.PIANO_SSH_PUBLIC_KEY == '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: piano-access-key-${{ github.sha }}
+          path: workspace/debian-piano/out/access-key/
+          if-no-files-found: error
           retention-days: 7
