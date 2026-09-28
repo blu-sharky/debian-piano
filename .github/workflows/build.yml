@@ -56,7 +56,7 @@ jobs:
           INPUT_FIRMWARE: ${{ inputs.firmware_ref }}
           INPUT_MESA: ${{ inputs.mesa_ref }}
         run: |
-          has() { git ls-remote --exit-code --heads "https://github.com/bluseliu50/$1" "refs/heads/$2" >/dev/null; }
+          has() { git ls-remote --exit-code --heads "https://github.com/blu-sharky/$1" "refs/heads/$2" >/dev/null; }
           workspace=${INPUT_WORKSPACE:-main}
           kernel=${INPUT_KERNEL:-piano-7.2.6}
           packaging=${INPUT_PACKAGING:-$GITHUB_SHA}
@@ -82,7 +82,7 @@ jobs:
       - name: Checkout orchestration
         uses: actions/checkout@v5
         with:
-          repository: bluseliu50/xiaomi-piano-linux
+          repository: blu-sharky/xiaomi-piano-linux
           ref: ${{ steps.refs.outputs.workspace }}
           path: workspace
           persist-credentials: false
@@ -97,7 +97,7 @@ jobs:
       - name: Checkout matching kernel source
         uses: actions/checkout@v5
         with:
-          repository: bluseliu50/linux-piano
+          repository: blu-sharky/linux-piano
           ref: ${{ steps.refs.outputs.kernel }}
           path: workspace/linux-piano
           persist-credentials: false
@@ -105,7 +105,7 @@ jobs:
       - name: Checkout piano firmware
         uses: actions/checkout@v5
         with:
-          repository: bluseliu50/piano-firmware
+          repository: blu-sharky/piano-firmware
           ref: ${{ steps.refs.outputs.firmware }}
           path: workspace/piano-firmware
           persist-credentials: false
@@ -113,7 +113,7 @@ jobs:
       - name: Checkout piano Mesa
         uses: actions/checkout@v5
         with:
-          repository: bluseliu50/piano-mesa
+          repository: blu-sharky/piano-mesa
           ref: ${{ steps.refs.outputs.mesa }}
           path: workspace/piano-mesa
           persist-credentials: false
@@ -163,7 +163,7 @@ jobs:
               --mesa-dir out/mesa/runtime \
               --jobs "$(nproc)" --output debian-piano/out/ci-image "${key_args[@]}"
           cat out/mesa/SOURCE >> debian-piano/out/ci-image/MANIFEST.txt
-          echo 'Firmware comes from bluseliu50/piano-firmware; see its README compliance statement.' >> debian-piano/out/ci-image/MANIFEST.txt
+          echo 'Firmware comes from blu-sharky/piano-firmware; see its README compliance statement.' >> debian-piano/out/ci-image/MANIFEST.txt
           if [ -z "$SSH_PUBLIC_KEY" ]; then
             echo 'SMOKE ONLY: ephemeral access key is deliberately not published.' >> debian-piano/out/ci-image/MANIFEST.txt
           fi
