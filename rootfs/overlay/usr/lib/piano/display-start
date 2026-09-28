@@ -113,6 +113,10 @@ run() {
 case "${1-}" in
     --stage) run "${2:?stage number}" ;;
     --all)
+        if [ ! -e /etc/piano/native-display ]; then
+            say 'disabled (opt-in): sudo touch /etc/piano/native-display to enable at boot'
+            exit 0
+        fi
         i=1
         while [ "$i" -le "$LAST_STAGE" ]; do run "$i"; i=$((i + 1)); done ;;
     *) sed -n '2,24p' "$0"; exit 2 ;;
