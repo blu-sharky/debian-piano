@@ -1,6 +1,6 @@
 [Unit]
 Description=Piano THP multitouch input
-After=systemd-udev-trigger.service
+After=systemd-udev-trigger.service piano-display.service
 [Service]
 Type=simple
 ExecStartPre=/usr/lib/piano/touch-start
