@@ -1,0 +1,6 @@
+[org/gnome/settings-daemon/plugins/power]
+# Android-style power menu: a short power press opens the GNOME
+# shutdown/restart dialog instead of suspending (s2idle is not
+# recoverable on piano yet).  logind stays at HandlePowerKey=ignore
+# as the belt-and-braces layer; gnome-settings-daemon owns the action.
+power-button-action='interactive'
