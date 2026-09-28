@@ -1,0 +1,6 @@
+# The Adreno 830 render node is root-only until Mesa can actually drive
+# Gen8: piano-mesa only lists the chip id, so any session that opens
+# renderD128 for EGL crashes (gnome-shell SEGV loop, 90+ sessions on the
+# first native-display boot). Sessions fall back to llvmpipe-on-GBM and
+# render on the msm DPU; delete this rule when Gen8 userspace lands.
+KERNEL=="renderD128", MODE="0600"
