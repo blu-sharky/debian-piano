@@ -105,8 +105,11 @@ fi
 # Resolve init and the ELF loader inside Debian, not against the initramfs.
 chroot /sysroot /usr/bin/test -x /sbin/init || rescue 'rootfs cannot execute /sbin/init'
 release=$(uname -r)
+# The rootfs only has to carry this kernel's modules; a stale release stamp
+# is reported but no longer blocks the handoff, so a rebuilt kernel can boot
+# an existing userdata after its module tree has been installed.
 [ "$(cat /sysroot/etc/piano/kernel-release 2>/dev/null)" = "$release" ] \
-    || rescue 'boot/rootfs kernel release mismatch'
+    || log "WARN: /etc/piano/kernel-release does not match $release"
 [ -d "/sysroot/lib/modules/$release" ] || rescue 'rootfs lacks matching kernel modules'
 log 'DONE mount-root (matching Debian init and kernel release found)'
 step switch-root
