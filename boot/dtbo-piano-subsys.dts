@@ -10,6 +10,8 @@
 #include "dtbo-piano-display.dts"
 #include <dt-bindings/clock/qcom,sm8750-gcc.h>
 #include <dt-bindings/dma/qcom-gpi.h>
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/linux-event-codes.h>
 #include <dt-bindings/interconnect/qcom,icc.h>
 #include <dt-bindings/interconnect/qcom,sm8750-rpmh.h>
 #include <dt-bindings/power/qcom,rpmhpd.h>
@@ -132,6 +134,37 @@
 				compatible = "ti,bq27z561";
 				pinctrl-names = "default";
 				pinctrl-0 = <>;
+			};
+		};
+	};
+
+	/*
+	 * Keyboard-cover hall sensors, straight on TLMM (stock xiaomi-hall:
+	 * lid_hall gpio80 = SW_LID, table_hall gpio11 = SW_TABLET_MODE, both
+	 * active low).  The stock node also routes them through smp2p for
+	 * wakeup; the lines are read directly here.
+	 */
+	fragment@288 {
+		target-path = "/soc";
+		__overlay__ {
+			piano_hall_ml: piano-hall-ml {
+				compatible = "gpio-keys";
+
+				lid-switch {
+					label = "lid_hall";
+					gpios = <&piano_tlmm_ml 80 GPIO_ACTIVE_LOW>;
+					linux,input-type = <EV_SW>;
+					linux,code = <SW_LID>;
+					wakeup-source;
+				};
+
+				tablet-mode-switch {
+					label = "table_hall";
+					gpios = <&piano_tlmm_ml 11 GPIO_ACTIVE_LOW>;
+					linux,input-type = <EV_SW>;
+					linux,code = <SW_TABLET_MODE>;
+					wakeup-source;
+				};
 			};
 		};
 	};
