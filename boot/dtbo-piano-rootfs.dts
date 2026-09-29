@@ -92,6 +92,25 @@
 			status = "okay";
 		};
 	};
+	/* Volume-up gpio-keys: re-state the stock node's references here.
+	 * ABL shifts the phandle references inside the stock-derived
+	 * fragments twice (target nodes +delta, references +2*delta), so the
+	 * stock gpio_keys pinctrl-0/gpios point at nothing and gpio-keys fails
+	 * with "invalid phandle".  References written from these fragments
+	 * are shifted once, like the node phandles; later fragments override
+	 * the stock properties.
+	 */
+	fragment@253 {
+		target = <&soc>;
+		__overlay__ {
+			gpio_keys {
+				pinctrl-0 = <&key_vol_up_default>;
+				vol_up {
+					gpios = <&pm8550_gpios 6 GPIO_ACTIVE_LOW>;
+				};
+			};
+		};
+	};
 	/* ABL scans out XRGB: a8b8g8r8 swapped red/blue (blue Tux). Same-name
 	 * fragment merges into the inherited framebuffer node at dtc time.
 	 */

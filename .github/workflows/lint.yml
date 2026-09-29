@@ -33,7 +33,10 @@ jobs:
           sh -n initramfs/init
           sh -n initramfs/rootfs-init
           for f in rootfs/overlay/usr/lib/piano/* rootfs/overlay/usr/local/bin/*; do
-            sh -n "$f"
+            case $(head -n1 "$f") in
+              *python3*) python3 -c 'import ast, sys; ast.parse(open(sys.argv[1]).read())' "$f" ;;
+              *) sh -n "$f" ;;
+            esac
           done
           for f in scripts/*.sh; do
             bash -n "$f"
@@ -42,8 +45,13 @@ jobs:
       - name: shellcheck
         run: |
           shellcheck scripts/*.sh
-          shellcheck -s sh initramfs/rootfs-init \
-              rootfs/overlay/usr/lib/piano/* rootfs/overlay/usr/local/bin/*
+          shellcheck -s sh initramfs/rootfs-init
+          for f in rootfs/overlay/usr/lib/piano/* rootfs/overlay/usr/local/bin/*; do
+            case $(head -n1 "$f") in
+              *python3*) ;;
+              *) shellcheck -s sh "$f" ;;
+            esac
+          done
           # initramfs/init targets busybox ash (POSIX sh)
           shellcheck -s sh initramfs/init || {
             echo "::warning::initramfs/init has shellcheck findings under 'sh' mode";

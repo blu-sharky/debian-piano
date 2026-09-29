@@ -1,0 +1,3 @@
+# Let the active session user open the power key: the piano-power-button
+# user service grabs it (see /usr/lib/piano/power-button).
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="pmic_pwrkey", TAG+="uaccess"

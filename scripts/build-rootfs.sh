@@ -125,6 +125,7 @@ PIN
 fi
 cp -a "$REPO/rootfs/overlay/." "$ROOTFS/"
 find "$ROOTFS/usr/lib/piano" "$ROOTFS/usr/local/bin" -type f -exec chmod 0755 {} +
+chroot "$ROOTFS" dconf update
 chroot "$ROOTFS" useradd -m -s /bin/bash -G sudo,audio,video,input,render piano
 PASSWORD=$(openssl rand -base64 18)
 printf 'piano:%s\n' "$PASSWORD" | chroot "$ROOTFS" chpasswd

@@ -230,7 +230,18 @@
 					#gpio-cells = <0x02>;
 					interrupt-controller;
 					#interrupt-cells = <0x02>;
-					phandle = <0x3b>;
+					/*
+					 * Explicit collision-free phandle: dtc would
+					 * auto-assign a LOW value here (fragment@3 is
+					 * early in the file), which collides with the
+					 * stock base tree.  ABL then rewrites the node
+					 * phandle without fixing cross-fragment
+					 * references -> "invalid phandle" at boot.
+					 * 0x900 is above both the overlay max (0x8d7)
+					 * and every vbdtb base phandle (max 0x652),
+					 * so nothing rewrites it.
+					 */
+					phandle = <0x900>;
 
 					key_vol_up {
 
@@ -240,7 +251,8 @@
 							input-enable;
 							bias-pull-up;
 							power-source = <0x01>;
-							phandle = <0x3a>;
+							/* Same rule as pm8550_gpios above. */
+							phandle = <0x901>;
 						};
 					};
 
