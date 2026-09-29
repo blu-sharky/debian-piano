@@ -56,6 +56,10 @@ step() {
 step smmu
 piano-qup-smmu 0xb6 0xa3 0x1400/0x7f 0x436 0x423 0x60 > /run/qup-smmu.log 2>&1 \
     || rescue 'SMMU repair failed; DMA drivers remain unloaded'
+# ADSP (LPASS audio, fastrpc) DMA streams 0x1000-0x10ff, one bypass match.
+# Non-fatal: without it only audio playback/capture would fault.
+piano-qup-smmu 0x1000/0xff >> /run/qup-smmu.log 2>&1 \
+    || log 'WARN ADSP SMMU stream match failed (see /run/qup-smmu.log)'
 touch /run/piano-smmu-ready
 log 'DONE smmu'
 step ufs-clkref
