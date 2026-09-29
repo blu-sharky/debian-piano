@@ -139,10 +139,14 @@
 	};
 
 	/*
-	 * Keyboard-cover hall sensors, straight on TLMM (stock xiaomi-hall:
-	 * lid_hall gpio80 = SW_LID, table_hall gpio11 = SW_TABLET_MODE, both
-	 * active low).  The stock node also routes them through smp2p for
-	 * wakeup; the lines are read directly here.
+	 * Keyboard-cover lid hall, straight on TLMM (stock xiaomi-hall:
+	 * lid_hall gpio80, active low).  The stock node also routes it through
+	 * smp2p for wakeup; the line is read directly here.
+	 *
+	 * The stock table_hall (gpio11) is not exposed as SW_TABLET_MODE: it
+	 * stays 0 with the detachable keyboard removed, and mutter trusts a
+	 * tablet-mode switch over "touchscreen and no pointer", so auto-rotate
+	 * never engaged while the switch existed.
 	 */
 	fragment@288 {
 		target-path = "/soc";
@@ -155,14 +159,6 @@
 					gpios = <&piano_tlmm_ml 80 GPIO_ACTIVE_LOW>;
 					linux,input-type = <EV_SW>;
 					linux,code = <SW_LID>;
-					wakeup-source;
-				};
-
-				tablet-mode-switch {
-					label = "table_hall";
-					gpios = <&piano_tlmm_ml 11 GPIO_ACTIVE_LOW>;
-					linux,input-type = <EV_SW>;
-					linux,code = <SW_TABLET_MODE>;
 					wakeup-source;
 				};
 			};
