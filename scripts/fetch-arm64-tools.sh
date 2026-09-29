@@ -158,13 +158,31 @@ mkdir -p "$OUTDIR/aplay"
 ln -sf tree/usr/bin/aplay "$OUTDIR/aplay/aplay"
 
 # --- stage musl sysroot (for the static pd-locator cross-build) ---------------
-# Pinned Alpine musl-dev; downloaded from the official Alpine CDN, extracted
-# under the gitignored tools dir. This is compiler material, not shipped code.
-MUSL_VER=1.2.6-r3
+# Alpine musl-dev + compiler-rt, downloaded from the official Alpine CDN and
+# extracted under the gitignored tools dir. This is compiler material, not
+# shipped code. Versions are resolved from the branch APKINDEX at run time:
+# the CDN drops superseded apk revisions, so a hardcoded version 404s once
+# the branch rolls (musl-dev 1.2.6-r3 on edge, Sept 2026).
+ALPINE_MIRROR=https://dl-cdn.alpinelinux.org/alpine
+
+alpine_current_version() { # alpine_current_version BRANCH PKG — version from the branch APKINDEX
+    local index="$WORK/APKINDEX-$1"
+    if [ ! -s "$index" ]; then
+        curl -fsSL "$ALPINE_MIRROR/$1/main/aarch64/APKINDEX.tar.gz" -o "$WORK/apkindex-$1.tgz" \
+            || die "cannot download APKINDEX for alpine $1"
+        ( cd "$WORK" && tar -xzf "apkindex-$1.tgz" APKINDEX ) \
+            || die "cannot unpack APKINDEX for alpine $1"
+        mv "$WORK/APKINDEX" "$index"
+    fi
+    grep -A1 "^P:$2\$" "$index" | sed -n 's/^V://p' | head -1
+}
+MUSL_VER=""
 SYSROOT="$OUTDIR/musl-sysroot"
 if [ ! -f "$SYSROOT/usr/lib/libc.a" ] || [ ! -f "$SYSROOT/usr/lib/crt1.o" ]; then
+    MUSL_VER=$(alpine_current_version edge musl-dev)
+    [ -n "$MUSL_VER" ] || die "no musl-dev in the alpine edge APKINDEX"
     echo "fetch-arm64-tools: fetching musl-dev $MUSL_VER (aarch64) for the sysroot..."
-    curl -fsSL "https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64/musl-dev-$MUSL_VER.apk" \
+    curl -fsSL "$ALPINE_MIRROR/edge/main/aarch64/musl-dev-$MUSL_VER.apk" \
         -o "$WORK/musl-dev.apk" || die "cannot download musl-dev"
     rm -rf "$SYSROOT"
     mkdir -p "$SYSROOT"
@@ -174,13 +192,15 @@ if [ ! -f "$SYSROOT/usr/lib/libc.a" ] || [ ! -f "$SYSROOT/usr/lib/crt1.o" ]; the
 fi
 
 # compiler-rt builtins for the same target (musl's stdio uses 128-bit long
-# double soft-float helpers that the host clang has no aarch64 runtime for).
-# Pinned to a stable Alpine branch.
-CRT_VER=20.1.8-r0
+# double soft-float helpers that the host clang has no aarch64 runtime for);
+# taken from a stable Alpine branch for slower toolchain churn.
+CRT_VER=""
 CRT_LIB="$SYSROOT/usr/lib/libclang_rt.builtins-aarch64.a"
 if [ ! -f "$CRT_LIB" ]; then
+    CRT_VER=$(alpine_current_version v3.22 compiler-rt)
+    [ -n "$CRT_VER" ] || die "no compiler-rt in the alpine v3.22 APKINDEX"
     echo "fetch-arm64-tools: fetching compiler-rt $CRT_VER (aarch64) for the sysroot..."
-    curl -fsSL "https://dl-cdn.alpinelinux.org/alpine/v3.22/main/aarch64/compiler-rt-$CRT_VER.apk" \
+    curl -fsSL "$ALPINE_MIRROR/v3.22/main/aarch64/compiler-rt-$CRT_VER.apk" \
         -o "$WORK/compiler-rt.apk" || die "cannot download compiler-rt"
     mkdir -p "$WORK/compiler-rt"
     tar -xzf "$WORK/compiler-rt.apk" -C "$WORK/compiler-rt" 2>/dev/null \
@@ -214,6 +234,8 @@ ln -sf tree/usr/sbin/iw "$OUTDIR/iw/iw"
     for p in "${PKGS[@]}"; do
         printf '%s: %s\n' "$p" "$(package_field "$p" Version)"
     done
+    echo "musl-dev: ${MUSL_VER:-cached} (alpine edge)"
+    echo "compiler-rt: ${CRT_VER:-cached} (alpine v3.22)"
     file "$OUTDIR/busybox/busybox" "$TREE/usr/sbin/dropbear" "$IW_TREE/usr/sbin/iw"
 } | tee "$OUTDIR/TOOLS-PROVENANCE"
 
