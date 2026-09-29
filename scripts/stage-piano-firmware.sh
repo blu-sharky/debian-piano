@@ -22,4 +22,8 @@ for file in "$SRC/btfm/image"/brhbtfw20.tlv "$SRC/btfm/image"/brhbtnv20.* \
     "$SRC/btfm/image"/brhperifw20.tlv "$SRC/btfm/image"/brhperinv20.bin; do
     install -m 0644 "$file" "$DEST/qca/"
 done
+# ADSP (sensors hub, battery transport, audio): stock names, as the stock
+# DT firmware-name expects; pd-mapper reads the PD lists (*.jsn).
+install -m 0644 "$SRC/non-hlos/image"/adsp.mdt "$SRC/non-hlos/image"/adsp.b[0-9]* \
+    "$SRC/non-hlos/image"/adsp_dtb.* "$SRC/non-hlos/image"/adsp*.jsn "$DEST/"
 (cd "$DEST" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum) > "$DEST/SHA256SUMS"
