@@ -54,7 +54,11 @@ step() {
     log "BEGIN $1"
 }
 step smmu
-piano-qup-smmu 0xb6 0xa3 0x1400/0x7f 0x436 0x423 0x60 > /run/qup-smmu.log 2>&1 \
+# Only 10 stream-match slots are writable from Linux (a write to slot 10 or
+# above is a bus error) and the bootloader owns five, so masks are used:
+# 0xa3/0x15 covers QUP1 SE 0xa3 and GPI 0xb6, 0x423/0x15 covers QUP2 SE 0x423
+# and GPI 0x436 (each pair differs in mask bits 0, 2 and 4 only).
+piano-qup-smmu 0xa3/0x15 0x423/0x15 0x1400/0x7f 0x60 > /run/qup-smmu.log 2>&1 \
     || rescue 'SMMU repair failed; DMA drivers remain unloaded'
 # ADSP (LPASS audio, fastrpc) DMA streams 0x1000-0x10ff, one bypass match.
 # Non-fatal: without it only audio playback/capture would fault.
