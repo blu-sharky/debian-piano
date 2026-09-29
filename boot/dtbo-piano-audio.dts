@@ -22,6 +22,14 @@
 #include <dt-bindings/soc/qcom,gpr.h>
 
 / {
+	/*
+	 * The SM8750 ADSP firmware only answers the static GPR source ports of
+	 * the downstream service ids: the APM client is 3 (stock spf_core) and
+	 * the PRM client 7 (stock q6prm); mainline's 1 and 2 are dropped
+	 * silently.  Move the stock driverless children out of the way and
+	 * take their ids.  (q6apm follows its reg as source port, see
+	 * audioreach_set_apm_src_port().)
+	 */
 	fragment@300 {
 		target-path = "/soc/remoteproc-adsp@03000000/glink-edge/qcom,gpr";
 		__overlay__ {
@@ -29,9 +37,17 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 
-			q6apm_ml: service@1 {
+			spf_core {
+				reg = <0x30>;
+			};
+
+			q6prm {
+				reg = <0x37>;
+			};
+
+			q6apm_ml: service@3 {
 				compatible = "qcom,q6apm";
-				reg = <GPR_APM_MODULE_IID>;
+				reg = <3>;
 				#sound-dai-cells = <0>;
 				qcom,protection-domain = "avs/audio", "msm/adsp/audio_pd";
 
@@ -45,9 +61,9 @@
 				};
 			};
 
-			q6prm_ml: service@2 {
+			q6prm_ml: service@7 {
 				compatible = "qcom,q6prm";
-				reg = <GPR_PRM_MODULE_IID>;
+				reg = <7>;
 				qcom,protection-domain = "avs/audio", "msm/adsp/audio_pd";
 
 				q6prmcc_ml: clock-controller {
