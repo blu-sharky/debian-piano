@@ -56,8 +56,21 @@
 					#sound-dai-cells = <1>;
 				};
 
+				/*
+				 * The ADSP takes the stream id of its accesses to
+				 * PCM buffers from address bits 32+, which
+				 * q6apm-dai fills from the first iommus entry.
+				 * Without it the ADSP uses 0x1000, a stream with
+				 * no match, and the first capture resets the SoC.
+				 * The stock SMMU node has no driver, so the
+				 * buffers stay untranslated like fastrpc's, on
+				 * the 0x1001/0x80 and 0x1041/0x20 bypass matches
+				 * that rootfs-init writes.
+				 */
 				q6apmdai_ml: dais {
 					compatible = "qcom,q6apm-dais";
+					iommus = <&apps_smmu 0x1001 0x80>,
+						 <&apps_smmu 0x1041 0x20>;
 				};
 			};
 
