@@ -33,10 +33,11 @@ mkdir -p "$OUTPUT"
 cp -a --reflink=auto "$ROOTFS" "$OUTPUT/rootfs"
 ROOTFS=$OUTPUT/rootfs
 mkdir -p "$ROOTFS/usr/lib/modules" "$ROOTFS/usr/lib/firmware" "$ROOTFS/etc/piano"
-cp -a "$MODULES/lib/modules/$KVER" "$ROOTFS/usr/lib/modules/"
+# Module and firmware trees belong to the building user; install them as root.
+cp -a --no-preserve=ownership "$MODULES/lib/modules/$KVER" "$ROOTFS/usr/lib/modules/"
 rm -f "$ROOTFS/usr/lib/modules/$KVER/build" "$ROOTFS/usr/lib/modules/$KVER/source"
 if [ -n "$FIRMWARE" ]; then
-    cp -a "$FIRMWARE/." "$ROOTFS/usr/lib/firmware/"
+    cp -a --no-preserve=ownership "$FIRMWARE/." "$ROOTFS/usr/lib/firmware/"
     echo local > "$ROOTFS/etc/piano/firmware-status"
 else
     echo not-included > "$ROOTFS/etc/piano/firmware-status"

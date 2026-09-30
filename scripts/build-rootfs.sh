@@ -123,7 +123,8 @@ PIN
         | awk '$1 == "mesa" && $4 == "installed" && $3 !~ /[+]piano/')
     [ -z "$stale" ] || die "Mesa packages without the piano patches remain: $stale"
 fi
-cp -a "$REPO/rootfs/overlay/." "$ROOTFS/"
+# The checkout belongs to the building user; the rootfs must stay root-owned.
+cp -a --no-preserve=ownership "$REPO/rootfs/overlay/." "$ROOTFS/"
 find "$ROOTFS/usr/lib/piano" "$ROOTFS/usr/local/bin" -type f -exec chmod 0755 {} +
 chroot "$ROOTFS" dconf update
 chroot "$ROOTFS" useradd -m -s /bin/bash -G sudo,audio,video,input,render piano
