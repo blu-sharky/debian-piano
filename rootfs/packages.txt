@@ -1,6 +1,7 @@
 # Bring-up and everyday tools.
 # Debian trixie arm64; one package per line, main only.
 # GNOME on simpledrm, with Mesa software rendering.
+alsa-ucm-conf
 # Marks the booted A/B slot successful so ABL keeps slot b bootable.
 alsa-utils
 at-spi2-core
