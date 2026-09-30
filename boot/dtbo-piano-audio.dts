@@ -310,22 +310,27 @@
 				status = "disabled";
 			};
 
-			spk_top_left_ml: audio-codec@34 {
+			/*
+			 * Speaker positions in the landscape orientation with the
+			 * front camera at the top (checked by ear); the vendor tree
+			 * names them for portrait.
+			 */
+			spk_bottom_left_ml: audio-codec@34 {
 				compatible = "foursemi,fs19xx";
 				reg = <0x34>;
 				#sound-dai-cells = <0>;
 				reset-gpios = <&piano_tlmm_ml 128 GPIO_ACTIVE_LOW>;
 				firmware-name = "qcom/sm8750/xiaomi/piano/fs19xx.fsm";
-				sound-name-prefix = "Top Left";
+				sound-name-prefix = "Bottom Left";
 			};
 
-			spk_top_right_ml: audio-codec@35 {
+			spk_top_left_ml: audio-codec@35 {
 				compatible = "foursemi,fs19xx";
 				reg = <0x35>;
 				#sound-dai-cells = <0>;
 				reset-gpios = <&piano_tlmm_ml 129 GPIO_ACTIVE_LOW>;
 				firmware-name = "qcom/sm8750/xiaomi/piano/fs19xx.fsm";
-				sound-name-prefix = "Top Right";
+				sound-name-prefix = "Top Left";
 			};
 
 			spk_bottom_right_ml: audio-codec@36 {
@@ -337,13 +342,13 @@
 				sound-name-prefix = "Bottom Right";
 			};
 
-			spk_bottom_left_ml: audio-codec@37 {
+			spk_top_right_ml: audio-codec@37 {
 				compatible = "foursemi,fs19xx";
 				reg = <0x37>;
 				#sound-dai-cells = <0>;
 				reset-gpios = <&piano_tlmm_ml 108 GPIO_ACTIVE_LOW>;
 				firmware-name = "qcom/sm8750/xiaomi/piano/fs19xx.fsm";
-				sound-name-prefix = "Bottom Left";
+				sound-name-prefix = "Top Right";
 			};
 		};
 	};
