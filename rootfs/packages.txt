@@ -2,7 +2,6 @@
 # Debian trixie arm64; one package per line, main only.
 # GNOME on simpledrm, with Mesa software rendering.
 alsa-ucm-conf
-# Marks the booted A/B slot successful so ABL keeps slot b bootable.
 alsa-utils
 at-spi2-core
 bash
@@ -43,6 +42,8 @@ iputils-ping
 iw
 kmod
 less
+# Firefox decodes H.264 and AAC video with the system FFmpeg.
+libavcodec61
 libdrm-tests
 libgl1-mesa-dri
 libglib2.0-bin
@@ -61,6 +62,7 @@ pipewire-audio
 procps
 psmisc
 python3
+# Marks the booted A/B slot successful so ABL keeps slot b bootable.
 qbootctl
 rsync
 strace
