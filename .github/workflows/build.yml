@@ -29,6 +29,8 @@ on:
 
 permissions:
   contents: read
+  # Pruning this ref's older compiler caches before saving a new one.
+  actions: write
 
 jobs:
   build:
@@ -212,6 +214,21 @@ jobs:
       - name: Compiler cache statistics
         if: always()
         run: ccache --show-stats
+
+      # Every save is a new ~2 GB entry (the key carries the run id) and
+      # the repository's cache quota is 10 GB, evicted least recently used.
+      # Keep one entry per ref: without this a few runs on one branch evict
+      # main's entry, which is the shared restore source of every branch
+      # (a run can only restore its own ref's caches and the default
+      # branch's).
+      - name: Prune this ref's older compiler caches
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh cache list --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF" \
+            --key piano-gnome-clang- --limit 100 --json id --jq '.[].id' |
+            xargs -r -n1 gh cache delete --repo "$GITHUB_REPOSITORY"
 
       # Saved even when the build fails, so a retry starts warm.
       - name: Save compiler cache
