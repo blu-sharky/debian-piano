@@ -198,13 +198,15 @@ jobs:
               --sensors-dir out/sensors/runtime \
               --audioreach-topology audioreach-topology \
               --jobs "$(nproc)" --output debian-piano/out/ci-image "${key_args[@]}"
-          cat out/mesa/SOURCE >> debian-piano/out/ci-image/MANIFEST.txt
-          cat out/sensors/SOURCE >> debian-piano/out/ci-image/MANIFEST.txt
-          echo "audioreach-topology $(git -C audioreach-topology rev-parse HEAD)" >> debian-piano/out/ci-image/MANIFEST.txt
-          echo 'Firmware comes from blu-sharky/piano-firmware; see its README compliance statement.' >> debian-piano/out/ci-image/MANIFEST.txt
-          if [ -z "$SSH_PUBLIC_KEY" ]; then
-            echo 'Access: per-build random key; private half published in the piano-access-key artifact.' >> debian-piano/out/ci-image/MANIFEST.txt
-          fi
+          {
+            cat out/mesa/SOURCE
+            cat out/sensors/SOURCE
+            echo "audioreach-topology $(git -C audioreach-topology rev-parse HEAD)"
+            echo 'Firmware comes from blu-sharky/piano-firmware; see its README compliance statement.'
+            if [ -z "$SSH_PUBLIC_KEY" ]; then
+              echo 'Access: per-build random key; private half published in the piano-access-key artifact.'
+            fi
+          } >> debian-piano/out/ci-image/MANIFEST.txt
 
       - name: Package flashable set and rootfs tarball
         working-directory: workspace/debian-piano
