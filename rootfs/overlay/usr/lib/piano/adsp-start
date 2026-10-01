@@ -18,12 +18,16 @@
 #                 ADSP's ~0.5 A fallback; pan_ack: the ADSP's USB-C port
 #                 notifications are acknowledged, without which its PD state
 #                 machine waits 13 s per notification and a source attached
-#                 at boot gets its PD contract only after 70-80 s
+#                 at boot gets its PD contract only after 70-80 s;
+#                 mipps_auth (off by default): the Xiaomi charger
+#                 authentication messages are relayed for xiaomi-mipps-auth;
+#                 an authenticated charger then stays at 5 V (no PPS yet)
 #
 # /etc/piano/adsp.conf may set ADSP_START=0 to skip everything,
 # CHARGE_POLICY=0 to leave charging to the ADSP, or CHARGE_HV=0 /
-# CHARGE_CURRENT=0 to keep 5 V / the ADSP's charge current, or CHARGE_PAN=0
-# to leave the port notifications unacknowledged.
+# CHARGE_CURRENT=0 to keep 5 V / the ADSP's charge current, CHARGE_PAN=0
+# to leave the port notifications unacknowledged, or CHARGE_MIPPS=1 to
+# run the Xiaomi charger authentication.
 set -eu
 
 ADSP_START=1
@@ -31,6 +35,7 @@ CHARGE_POLICY=1
 CHARGE_HV=1
 CHARGE_CURRENT=1
 CHARGE_PAN=1
+CHARGE_MIPPS=0
 # shellcheck source=/dev/null
 [ ! -r /etc/piano/adsp.conf ] || . /etc/piano/adsp.conf
 
@@ -71,5 +76,6 @@ say "DONE adsp running"
 say "BEGIN power"
 modprobe pmic_glink || say "WARN pmic_glink"
 modprobe piano_mca charge_policy="$CHARGE_POLICY" hv_charge="$CHARGE_HV" \
-    charge_current="$CHARGE_CURRENT" pan_ack="$CHARGE_PAN" || say "WARN piano_mca"
+    charge_current="$CHARGE_CURRENT" pan_ack="$CHARGE_PAN" \
+    mipps_auth="$CHARGE_MIPPS" || say "WARN piano_mca"
 say "DONE"
