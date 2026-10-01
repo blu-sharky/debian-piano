@@ -123,7 +123,8 @@ PIN
         | awk '$1 == "mesa" && $4 == "installed" && $3 !~ /[+]piano/')
     [ -z "$stale" ] || die "Mesa packages without the piano patches remain: $stale"
 fi
-cp -a "$REPO/rootfs/overlay/." "$ROOTFS/"
+# The checkout belongs to the building user; the rootfs must stay root-owned.
+cp -a --no-preserve=ownership "$REPO/rootfs/overlay/." "$ROOTFS/"
 find "$ROOTFS/usr/lib/piano" "$ROOTFS/usr/local/bin" -type f -exec chmod 0755 {} +
 chroot "$ROOTFS" dconf update
 chroot "$ROOTFS" useradd -m -s /bin/bash -G sudo,audio,video,input,render piano
@@ -142,7 +143,7 @@ printf 'en_US.UTF-8 UTF-8\nzh_CN.UTF-8 UTF-8\n' > "$ROOTFS/etc/locale.gen"
 chroot "$ROOTFS" locale-gen
 printf 'LANG=en_US.UTF-8\n' > "$ROOTFS/etc/default/locale"
 chroot "$ROOTFS" glib-compile-schemas /usr/share/glib-2.0/schemas
-chroot "$ROOTFS" systemctl enable NetworkManager ssh bluetooth piano-usb piano-touch piano-radio piano-adsp piano-hostkeys
+chroot "$ROOTFS" systemctl enable NetworkManager ssh bluetooth piano-usb piano-touch piano-radio piano-adsp piano-audio piano-hostkeys
 chroot "$ROOTFS" systemctl set-default graphical.target
 ln -sf /usr/lib/systemd/system/gdm3.service "$ROOTFS/etc/systemd/system/display-manager.service"
 # Preserve the bootloader display: neither suspend nor blanking is recoverable yet.

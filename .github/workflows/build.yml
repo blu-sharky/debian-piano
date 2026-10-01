@@ -136,6 +136,16 @@ jobs:
           path: workspace/piano-sensors
           persist-credentials: false
 
+      # m4 macro library for the piano AudioReach topology (BSD-3-Clause),
+      # pinned so that the topology binary is reproducible.
+      - name: Checkout AudioReach topology macros
+        uses: actions/checkout@v5
+        with:
+          repository: linux-msm/audioreach-topology
+          ref: 993a17dcb672357998a463a73f120064d6c74f4f
+          path: workspace/audioreach-topology
+          persist-credentials: false
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -143,7 +153,7 @@ jobs:
               clang lld llvm ccache make flex bison bc libssl-dev libelf-dev \
               rsync cpio kmod device-tree-compiler debootstrap \
               debian-archive-keyring curl openssh-client openssl \
-              e2fsprogs python3 zstd xz-utils lz4
+              e2fsprogs python3 zstd xz-utils lz4 m4 alsa-utils
           df -h "$GITHUB_WORKSPACE"
 
       - name: Restore compiler cache
@@ -186,9 +196,11 @@ jobs:
           scripts/build-rootfs-image.sh --firmware-tree piano-firmware/firmware \
               --mesa-dir out/mesa/runtime \
               --sensors-dir out/sensors/runtime \
+              --audioreach-topology audioreach-topology \
               --jobs "$(nproc)" --output debian-piano/out/ci-image "${key_args[@]}"
           cat out/mesa/SOURCE >> debian-piano/out/ci-image/MANIFEST.txt
           cat out/sensors/SOURCE >> debian-piano/out/ci-image/MANIFEST.txt
+          echo "audioreach-topology $(git -C audioreach-topology rev-parse HEAD)" >> debian-piano/out/ci-image/MANIFEST.txt
           echo 'Firmware comes from blu-sharky/piano-firmware; see its README compliance statement.' >> debian-piano/out/ci-image/MANIFEST.txt
           if [ -z "$SSH_PUBLIC_KEY" ]; then
             echo 'Access: per-build random key; private half published in the piano-access-key artifact.' >> debian-piano/out/ci-image/MANIFEST.txt

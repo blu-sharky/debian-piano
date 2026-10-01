@@ -26,4 +26,6 @@ done
 # DT firmware-name expects; pd-mapper reads the PD lists (*.jsn).
 install -m 0644 "$SRC/non-hlos/image"/adsp.mdt "$SRC/non-hlos/image"/adsp.b[0-9]* \
     "$SRC/non-hlos/image"/adsp_dtb.* "$SRC/non-hlos/image"/adsp*.jsn "$DEST/"
+# Speaker amplifier presets (FS19xx), at the path the piano DT names.
+install -D -m 0644 "$SRC/odm/firmware/fs19xx.fsm" "$DEST/qcom/sm8750/xiaomi/piano/fs19xx.fsm"
 (cd "$DEST" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum) > "$DEST/SHA256SUMS"
