@@ -143,7 +143,7 @@ printf 'en_US.UTF-8 UTF-8\nzh_CN.UTF-8 UTF-8\n' > "$ROOTFS/etc/locale.gen"
 chroot "$ROOTFS" locale-gen
 printf 'LANG=en_US.UTF-8\n' > "$ROOTFS/etc/default/locale"
 chroot "$ROOTFS" glib-compile-schemas /usr/share/glib-2.0/schemas
-chroot "$ROOTFS" systemctl enable NetworkManager ssh bluetooth piano-usb piano-touch piano-radio piano-adsp piano-audio piano-video piano-keyboard piano-hostkeys piano-swapfile
+chroot "$ROOTFS" systemctl enable NetworkManager ssh bluetooth piano-usb piano-touch piano-radio piano-adsp piano-audio piano-video piano-keyboard piano-cpufreq piano-hostkeys piano-swapfile
 chroot "$ROOTFS" systemctl set-default graphical.target
 ln -sf /usr/lib/systemd/system/gdm3.service "$ROOTFS/etc/systemd/system/display-manager.service"
 # Preserve the bootloader display: neither suspend nor blanking is recoverable yet.
