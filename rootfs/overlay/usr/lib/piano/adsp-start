@@ -15,17 +15,22 @@
 #                 hv_charge: PD sources with a fixed 9 V PDO are asked for
 #                 9 V; charge_current: the battery charge current follows
 #                 the charger type (up to 2 A at 15-40 degC) instead of the
-#                 ADSP's ~0.5 A fallback
+#                 ADSP's ~0.5 A fallback; pan_ack: the ADSP's USB-C port
+#                 notifications are acknowledged, without which its PD state
+#                 machine waits 13 s per notification and a source attached
+#                 at boot gets its PD contract only after 70-80 s
 #
 # /etc/piano/adsp.conf may set ADSP_START=0 to skip everything,
 # CHARGE_POLICY=0 to leave charging to the ADSP, or CHARGE_HV=0 /
-# CHARGE_CURRENT=0 to keep 5 V / the ADSP's charge current.
+# CHARGE_CURRENT=0 to keep 5 V / the ADSP's charge current, or CHARGE_PAN=0
+# to leave the port notifications unacknowledged.
 set -eu
 
 ADSP_START=1
 CHARGE_POLICY=1
 CHARGE_HV=1
 CHARGE_CURRENT=1
+CHARGE_PAN=1
 # shellcheck source=/dev/null
 [ ! -r /etc/piano/adsp.conf ] || . /etc/piano/adsp.conf
 
@@ -66,5 +71,5 @@ say "DONE adsp running"
 say "BEGIN power"
 modprobe pmic_glink || say "WARN pmic_glink"
 modprobe piano_mca charge_policy="$CHARGE_POLICY" hv_charge="$CHARGE_HV" \
-    charge_current="$CHARGE_CURRENT" || say "WARN piano_mca"
+    charge_current="$CHARGE_CURRENT" pan_ack="$CHARGE_PAN" || say "WARN piano_mca"
 say "DONE"
