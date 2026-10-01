@@ -34,6 +34,12 @@ gnome-shell
 gnome-system-monitor
 gnome-terminal
 gnome-text-editor
+# GStreamer players decode on the Iris codec through the V4L2 stateful
+# decoders (plugins-good) and need the stream parsers from plugins-bad.
+gstreamer1.0-plugins-bad
+gstreamer1.0-plugins-good
+# gst-launch-1.0 for checking the codec from a shell.
+gstreamer1.0-tools
 htop
 ibus
 ibus-libpinyin
