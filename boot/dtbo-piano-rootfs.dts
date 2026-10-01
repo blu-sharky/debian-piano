@@ -3,6 +3,8 @@
  * Register/clock layout: upstream sm8750.dtsi; board wiring: stock piano DT.
  * Rails are inherited from ABL, as in the existing PCIe bring-up profile.
  * UFS PHY stays modular: /pianoinit repairs SID 0x60 before it can start DMA.
+ * Also names the board for userspace: the stock base DT calls it
+ * "Qualcomm Technologies, Inc. Piano based on SM8750".
  */
 #include "dtbo-piano-wlanbt.dts"
 / {
@@ -109,6 +111,13 @@
 					gpios = <&pm8550_gpios 6 GPIO_ACTIVE_LOW>;
 				};
 			};
+		};
+	};
+	/* Read by hostnamed (GNOME "About") and benchmarks as the model */
+	fragment@254 {
+		target-path = "/";
+		__overlay__ {
+			model = "Xiaomi Pad 8 Pro";
 		};
 	};
 	/* ABL scans out XRGB: a8b8g8r8 swapped red/blue (blue Tux). Same-name
