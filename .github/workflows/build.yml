@@ -30,6 +30,10 @@ on:
         description: 'piano-sensors revision'
         default: main
         required: false
+      mipps_ref:
+        description: 'piano-mipps-auth revision'
+        default: main
+        required: false
 
 permissions:
   contents: read
@@ -62,6 +66,7 @@ jobs:
           INPUT_FIRMWARE: ${{ inputs.firmware_ref }}
           INPUT_MESA: ${{ inputs.mesa_ref }}
           INPUT_SENSORS: ${{ inputs.sensors_ref }}
+          INPUT_MIPPS: ${{ inputs.mipps_ref }}
         run: |
           has() { git ls-remote --exit-code --heads "https://github.com/blu-sharky/$1" "refs/heads/$2" >/dev/null; }
           workspace=${INPUT_WORKSPACE:-main}
@@ -70,6 +75,7 @@ jobs:
           firmware=${INPUT_FIRMWARE:-main}
           mesa=${INPUT_MESA:-main}
           sensors=${INPUT_SENSORS:-main}
+          mipps=${INPUT_MIPPS:-main}
           if [ "$EVENT" = pull_request ]; then
             if has xiaomi-piano-linux "$HEAD_REF"; then workspace=$HEAD_REF; fi
             for ref in "$HEAD_REF" "piano/${HEAD_REF#*/}"; do
@@ -78,8 +84,11 @@ jobs:
             if has piano-firmware "$HEAD_REF"; then firmware=$HEAD_REF; fi
             if has piano-mesa "$HEAD_REF"; then mesa=$HEAD_REF; fi
             if has piano-sensors "$HEAD_REF"; then sensors=$HEAD_REF; fi
+            for ref in "$HEAD_REF" "piano/${HEAD_REF#*/}"; do
+              if has piano-mipps-auth "$ref"; then mipps=$ref; break; fi
+            done
           fi
-          echo "workspace=$workspace kernel=$kernel packaging=$packaging firmware=$firmware mesa=$mesa sensors=$sensors"
+          echo "workspace=$workspace kernel=$kernel packaging=$packaging firmware=$firmware mesa=$mesa sensors=$sensors mipps=$mipps"
           {
             echo "workspace=$workspace"
             echo "kernel=$kernel"
@@ -87,6 +96,7 @@ jobs:
             echo "firmware=$firmware"
             echo "mesa=$mesa"
             echo "sensors=$sensors"
+            echo "mipps=$mipps"
           } >> "$GITHUB_OUTPUT"
 
       - name: Checkout orchestration
@@ -136,6 +146,14 @@ jobs:
           path: workspace/piano-sensors
           persist-credentials: false
 
+      - name: Checkout piano MiPPS authentication
+        uses: actions/checkout@v5
+        with:
+          repository: blu-sharky/piano-mipps-auth
+          ref: ${{ steps.refs.outputs.mipps }}
+          path: workspace/piano-mipps-auth
+          persist-credentials: false
+
       # m4 macro library for the piano AudioReach topology (BSD-3-Clause),
       # pinned so that the topology binary is reproducible.
       - name: Checkout AudioReach topology macros
@@ -178,6 +196,16 @@ jobs:
           piano-sensors/scripts/build-in-container.sh out/sensors
           echo "piano-sensors $(git -C piano-sensors rev-parse HEAD)" > out/sensors/SOURCE
 
+      # Architecture-independent script package (dpkg-deb only); it joins
+      # the piano-sensors packages in the userspace set of the rootfs.
+      - name: Build piano MiPPS authentication package
+        working-directory: workspace
+        run: |
+          mkdir -p out/userspace
+          cp out/sensors/runtime/*.deb out/userspace/
+          piano-mipps-auth/build-deb.sh "$PWD/out/userspace/xiaomi-mipps-auth.deb"
+          echo "piano-mipps-auth $(git -C piano-mipps-auth rev-parse HEAD)" > out/userspace/SOURCE
+
       - name: Build matched GNOME image set with piano-firmware
         working-directory: workspace
         env:
@@ -195,12 +223,13 @@ jobs:
           debian-piano/scripts/fetch-arm64-tools.sh --output-dir out/arm64-tools
           scripts/build-rootfs-image.sh --firmware-tree piano-firmware/firmware \
               --mesa-dir out/mesa/runtime \
-              --sensors-dir out/sensors/runtime \
+              --sensors-dir out/userspace \
               --audioreach-topology audioreach-topology \
               --jobs "$(nproc)" --output debian-piano/out/ci-image "${key_args[@]}"
           {
             cat out/mesa/SOURCE
             cat out/sensors/SOURCE
+            cat out/userspace/SOURCE
             echo "audioreach-topology $(git -C audioreach-topology rev-parse HEAD)"
             echo 'Firmware comes from blu-sharky/piano-firmware; see its README compliance statement.'
             if [ -z "$SSH_PUBLIC_KEY" ]; then
