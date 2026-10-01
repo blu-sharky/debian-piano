@@ -71,6 +71,9 @@ python3
 # Marks the booted A/B slot successful so ABL keeps slot b bootable.
 qbootctl
 rsync
+# Snap packages (the kernel carries the xz/lzo/zstd squashfs decompressors);
+# without AppArmor snapd runs strict snaps in devmode.
+snapd
 strace
 sudo
 systemd-sysv
