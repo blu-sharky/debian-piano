@@ -11,14 +11,21 @@
 #   3 power       pmic_glink and the Xiaomi MCA property transport (piano_mca)
 #                 with charge_policy: the USB input current limit follows the
 #                 charger type (up to 1.5 A at 5 V) instead of the ADSP's
-#                 ~0.4 A power-on hold, which is below the system draw
+#                 ~0.4 A power-on hold, which is below the system draw;
+#                 hv_charge: PD sources with a fixed 9 V PDO are asked for
+#                 9 V; charge_current: the battery charge current follows
+#                 the charger type (up to 2 A at 15-40 degC) instead of the
+#                 ADSP's ~0.5 A fallback
 #
-# /etc/piano/adsp.conf may set ADSP_START=0 to skip everything, or
-# CHARGE_POLICY=0 to leave the input current limit to the ADSP.
+# /etc/piano/adsp.conf may set ADSP_START=0 to skip everything,
+# CHARGE_POLICY=0 to leave charging to the ADSP, or CHARGE_HV=0 /
+# CHARGE_CURRENT=0 to keep 5 V / the ADSP's charge current.
 set -eu
 
 ADSP_START=1
 CHARGE_POLICY=1
+CHARGE_HV=1
+CHARGE_CURRENT=1
 # shellcheck source=/dev/null
 [ ! -r /etc/piano/adsp.conf ] || . /etc/piano/adsp.conf
 
@@ -58,5 +65,6 @@ say "DONE adsp running"
 
 say "BEGIN power"
 modprobe pmic_glink || say "WARN pmic_glink"
-modprobe piano_mca charge_policy="$CHARGE_POLICY" || say "WARN piano_mca"
+modprobe piano_mca charge_policy="$CHARGE_POLICY" hv_charge="$CHARGE_HV" \
+    charge_current="$CHARGE_CURRENT" || say "WARN piano_mca"
 say "DONE"
