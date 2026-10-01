@@ -26,6 +26,10 @@ on:
         description: 'piano-mesa revision'
         default: main
         required: false
+      sensors_ref:
+        description: 'piano-sensors revision'
+        default: main
+        required: false
 
 permissions:
   contents: read
@@ -57,6 +61,7 @@ jobs:
           INPUT_PACKAGING: ${{ inputs.packaging_ref }}
           INPUT_FIRMWARE: ${{ inputs.firmware_ref }}
           INPUT_MESA: ${{ inputs.mesa_ref }}
+          INPUT_SENSORS: ${{ inputs.sensors_ref }}
         run: |
           has() { git ls-remote --exit-code --heads "https://github.com/blu-sharky/$1" "refs/heads/$2" >/dev/null; }
           workspace=${INPUT_WORKSPACE:-main}
@@ -64,6 +69,7 @@ jobs:
           packaging=${INPUT_PACKAGING:-$GITHUB_SHA}
           firmware=${INPUT_FIRMWARE:-main}
           mesa=${INPUT_MESA:-main}
+          sensors=${INPUT_SENSORS:-main}
           if [ "$EVENT" = pull_request ]; then
             if has xiaomi-piano-linux "$HEAD_REF"; then workspace=$HEAD_REF; fi
             for ref in "$HEAD_REF" "piano/${HEAD_REF#*/}"; do
@@ -71,14 +77,16 @@ jobs:
             done
             if has piano-firmware "$HEAD_REF"; then firmware=$HEAD_REF; fi
             if has piano-mesa "$HEAD_REF"; then mesa=$HEAD_REF; fi
+            if has piano-sensors "$HEAD_REF"; then sensors=$HEAD_REF; fi
           fi
-          echo "workspace=$workspace kernel=$kernel packaging=$packaging firmware=$firmware mesa=$mesa"
+          echo "workspace=$workspace kernel=$kernel packaging=$packaging firmware=$firmware mesa=$mesa sensors=$sensors"
           {
             echo "workspace=$workspace"
             echo "kernel=$kernel"
             echo "packaging=$packaging"
             echo "firmware=$firmware"
             echo "mesa=$mesa"
+            echo "sensors=$sensors"
           } >> "$GITHUB_OUTPUT"
 
       - name: Checkout orchestration
@@ -120,6 +128,14 @@ jobs:
           path: workspace/piano-mesa
           persist-credentials: false
 
+      - name: Checkout piano sensors
+        uses: actions/checkout@v5
+        with:
+          repository: blu-sharky/piano-sensors
+          ref: ${{ steps.refs.outputs.sensors }}
+          path: workspace/piano-sensors
+          persist-credentials: false
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -146,6 +162,12 @@ jobs:
           piano-mesa/scripts/build-in-container.sh out/mesa "$CCACHE_DIR"
           echo "piano-mesa $(git -C piano-mesa rev-parse HEAD)" > out/mesa/SOURCE
 
+      - name: Build piano sensors packages
+        working-directory: workspace
+        run: |
+          piano-sensors/scripts/build-in-container.sh out/sensors
+          echo "piano-sensors $(git -C piano-sensors rev-parse HEAD)" > out/sensors/SOURCE
+
       - name: Build matched GNOME image set with piano-firmware
         working-directory: workspace
         env:
@@ -163,8 +185,10 @@ jobs:
           debian-piano/scripts/fetch-arm64-tools.sh --output-dir out/arm64-tools
           scripts/build-rootfs-image.sh --firmware-tree piano-firmware/firmware \
               --mesa-dir out/mesa/runtime \
+              --sensors-dir out/sensors/runtime \
               --jobs "$(nproc)" --output debian-piano/out/ci-image "${key_args[@]}"
           cat out/mesa/SOURCE >> debian-piano/out/ci-image/MANIFEST.txt
+          cat out/sensors/SOURCE >> debian-piano/out/ci-image/MANIFEST.txt
           echo 'Firmware comes from blu-sharky/piano-firmware; see its README compliance statement.' >> debian-piano/out/ci-image/MANIFEST.txt
           if [ -z "$SSH_PUBLIC_KEY" ]; then
             echo 'Access: per-build random key; private half published in the piano-access-key artifact.' >> debian-piano/out/ci-image/MANIFEST.txt
