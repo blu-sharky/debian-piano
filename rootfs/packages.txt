@@ -74,6 +74,8 @@ rsync
 strace
 sudo
 systemd-sysv
+# zram swap, configured in /etc/systemd/zram-generator.conf.
+systemd-zram-generator
 systemd-timesyncd
 tzdata
 udev
