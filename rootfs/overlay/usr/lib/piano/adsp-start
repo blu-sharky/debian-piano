@@ -12,16 +12,16 @@
 #                 with charge_policy: the USB input current limit follows the
 #                 charger type (up to 1.5 A at 5 V) instead of the ADSP's
 #                 ~0.4 A power-on hold, which is below the system draw;
-#                 hv_charge: PD sources with a fixed 9 V PDO are asked for
-#                 9 V; charge_current: the battery charge current follows
-#                 the charger type (up to 2 A at 15-40 degC) instead of the
+#                 hv_charge: PD sources are asked for 9 V (a fixed 9 V PDO,
+#                 else a PPS APDO), with up to 2.5 A input there;
+#                 charge_current: the battery charge current follows the
+#                 charger type (up to 3 A at 15-38 degC) instead of the
 #                 ADSP's ~0.5 A fallback; pan_ack: the ADSP's USB-C port
 #                 notifications are acknowledged, without which its PD state
 #                 machine waits 13 s per notification and a source attached
 #                 at boot gets its PD contract only after 70-80 s;
 #                 mipps_auth (off by default): the Xiaomi charger
-#                 authentication messages are relayed for xiaomi-mipps-auth;
-#                 an authenticated charger then stays at 5 V (no PPS yet)
+#                 authentication messages are relayed for xiaomi-mipps-auth
 #
 # /etc/piano/adsp.conf may set ADSP_START=0 to skip everything,
 # CHARGE_POLICY=0 to leave charging to the ADSP, or CHARGE_HV=0 /
