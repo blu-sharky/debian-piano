@@ -106,6 +106,19 @@
 				pinctrl-names = "default";
 				pinctrl-0 = <>;
 			};
+
+			/*
+			 * SC8541 2:1 switched-capacitor stage (stock 67 W
+			 * direct charging).  The stock node has the vendor
+			 * "sc8541_master" compatible and a dangling pinctrl-0;
+			 * sc8541_charger polls it, cp-int stays unused.  Only
+			 * piano-adsp loads the driver, with CHARGE_CP=1.
+			 */
+			sc8541_master@6a {
+				compatible = "southchip,sc8541";
+				pinctrl-names = "default";
+				pinctrl-0 = <>;
+			};
 		};
 	};
 
