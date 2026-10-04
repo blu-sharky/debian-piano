@@ -20,14 +20,18 @@
 #                 notifications are acknowledged, without which its PD state
 #                 machine waits 13 s per notification and a source attached
 #                 at boot gets its PD contract only after 70-80 s;
-#                 mipps_auth (off by default): the Xiaomi charger
-#                 authentication messages are relayed for xiaomi-mipps-auth
+#                 mipps_auth: the Xiaomi charger authentication messages
+#                 are relayed for xiaomi-mipps-auth; cp_charge: PPS
+#                 sources (a verified Xiaomi adapter up to 5 A on the bus,
+#                 others 4.1 A) charge through the SC8541 2:1 stage
+#                 (sc8541_charger) with the buck charger in parallel
 #
 # /etc/piano/adsp.conf may set ADSP_START=0 to skip everything,
 # CHARGE_POLICY=0 to leave charging to the ADSP, or CHARGE_HV=0 /
 # CHARGE_CURRENT=0 to keep 5 V / the ADSP's charge current, CHARGE_PAN=0
-# to leave the port notifications unacknowledged, or CHARGE_MIPPS=1 to
-# run the Xiaomi charger authentication.
+# to leave the port notifications unacknowledged, CHARGE_MIPPS=0 to skip
+# the Xiaomi charger authentication, or CHARGE_CP=0 to stay on the buck
+# charger (22.5 W at most).  CHARGE_CP needs CHARGE_HV and CHARGE_CURRENT.
 set -eu
 
 ADSP_START=1
@@ -35,7 +39,8 @@ CHARGE_POLICY=1
 CHARGE_HV=1
 CHARGE_CURRENT=1
 CHARGE_PAN=1
-CHARGE_MIPPS=0
+CHARGE_MIPPS=1
+CHARGE_CP=1
 # shellcheck source=/dev/null
 [ ! -r /etc/piano/adsp.conf ] || . /etc/piano/adsp.conf
 
@@ -75,7 +80,11 @@ say "DONE adsp running"
 
 say "BEGIN power"
 modprobe pmic_glink || say "WARN pmic_glink"
+if [ "$CHARGE_CP" = 1 ] && ! modprobe sc8541_charger; then
+    say "WARN sc8541_charger"
+    CHARGE_CP=0
+fi
 modprobe piano_mca charge_policy="$CHARGE_POLICY" hv_charge="$CHARGE_HV" \
     charge_current="$CHARGE_CURRENT" pan_ack="$CHARGE_PAN" \
-    mipps_auth="$CHARGE_MIPPS" || say "WARN piano_mca"
+    mipps_auth="$CHARGE_MIPPS" cp_charge="$CHARGE_CP" || say "WARN piano_mca"
 say "DONE"
