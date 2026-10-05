@@ -10,7 +10,8 @@
 #                  (default: out/arm64-tools/musl-sysroot)
 #   --output FILE  static arm64 ELF to write
 #   --source FILE  C source to build (default: the touch viewer); also used
-#                  for the other single-file helpers (piano-bt-scan)
+#                  for the other single-file helpers (piano-bt-scan,
+#                  piano-camerad)
 #
 # Needs clang and ld.lld on the host; links musl libc.a plus the staged
 # compiler-rt builtins, no host aarch64 runtime required.

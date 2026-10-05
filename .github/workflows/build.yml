@@ -164,6 +164,16 @@ jobs:
           path: workspace/audioreach-topology
           persist-credentials: false
 
+      # Loopback video devices (GPL-2.0) that piano-camerad feeds with the
+      # hardware ISP output, built against the image kernel; pinned to v0.15.4.
+      - name: Checkout v4l2loopback
+        uses: actions/checkout@v5
+        with:
+          repository: umlaeute/v4l2loopback
+          ref: 0f9ee86760b7f2bea174b7e3e7a1d38845da0ab4
+          path: workspace/v4l2loopback
+          persist-credentials: false
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -225,12 +235,14 @@ jobs:
               --mesa-dir out/mesa/runtime \
               --sensors-dir out/userspace \
               --audioreach-topology audioreach-topology \
+              --v4l2loopback v4l2loopback \
               --jobs "$(nproc)" --output debian-piano/out/ci-image "${key_args[@]}"
           {
             cat out/mesa/SOURCE
             cat out/sensors/SOURCE
             cat out/userspace/SOURCE
             echo "audioreach-topology $(git -C audioreach-topology rev-parse HEAD)"
+            echo "v4l2loopback $(git -C v4l2loopback rev-parse HEAD)"
             echo 'Firmware comes from blu-sharky/piano-firmware; see its README compliance statement.'
             if [ -z "$SSH_PUBLIC_KEY" ]; then
               echo 'Access: per-build random key; private half published in the piano-access-key artifact.'
