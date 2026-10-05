@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Assemble the local-only ext4 userdata image; never writes a block device.
 set -euo pipefail
-ROOTFS='' MODULES='' KVER='' FIRMWARE='' TOUCH='' BUSYBOX='' OUTPUT='' SIZE=12G
+ROOTFS='' MODULES='' KVER='' FIRMWARE='' TOUCH='' CAMERAD='' BUSYBOX='' OUTPUT='' SIZE=12G
 die() { echo "assemble-rootfs-image: $*" >&2; exit 1; }
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -10,6 +10,7 @@ while [ $# -gt 0 ]; do
         --kernel-release) KVER=${2:?}; shift 2 ;;
         --firmware-dir) FIRMWARE=${2:?}; shift 2 ;;
         --touch-view) TOUCH=${2:?}; shift 2 ;;
+        --camera-daemon) CAMERAD=${2:?}; shift 2 ;;
         --busybox) BUSYBOX=${2:?}; shift 2 ;;
         --output-dir) OUTPUT=${2:?}; shift 2 ;;
         --image-size) SIZE=${2:?}; shift 2 ;;
@@ -23,6 +24,7 @@ done
 [ -d "$MODULES/lib/modules/$KVER" ] || die 'missing kernel module tree'
 [ -z "$FIRMWARE" ] || [ -d "$FIRMWARE/ath12k/PEACH/hw2.0" ] || die 'missing local firmware'
 [ -x "$TOUCH" ] || die 'missing arm64 helpers'
+[ -x "$CAMERAD" ] || die 'missing arm64 helpers'
 [ -x "$BUSYBOX" ] || die 'missing arm64 helpers'
 [ -n "$OUTPUT" ] || die '--output-dir required'
 mkdir -p "$OUTPUT"
@@ -43,6 +45,7 @@ else
     echo not-included > "$ROOTFS/etc/piano/firmware-status"
 fi
 install -m 0755 "$TOUCH" "$ROOTFS/usr/bin/piano-touch-view"
+install -m 0755 "$CAMERAD" "$ROOTFS/usr/lib/piano/piano-camerad"
 install -m 0755 "$BUSYBOX" "$ROOTFS/usr/lib/piano/busybox"
 printf '%s\n' "$KVER" > "$ROOTFS/etc/piano/kernel-release"
 depmod -b "$ROOTFS" "$KVER"

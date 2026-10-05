@@ -74,6 +74,14 @@ rm "$ROOTFS/etc/apt/sources.list.d/bootstrap.list"
 mapfile -t PKGS < <(sed '/^[[:space:]]*#/d; /^[[:space:]]*$/d' "$REPO/rootfs/packages.txt")
 chroot "$ROOTFS" apt-get update
 chroot "$ROOTFS" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${PKGS[@]}"
+# Newer userspace from trixie-backports, with its dependencies taken from
+# there too (rootfs/packages-backports.txt).
+printf 'deb https://deb.debian.org/debian trixie-backports main\n' \
+    > "$ROOTFS/etc/apt/sources.list.d/trixie-backports.list"
+mapfile -t BPO_PKGS < <(sed '/^[[:space:]]*#/d; /^[[:space:]]*$/d' "$REPO/rootfs/packages-backports.txt")
+chroot "$ROOTFS" apt-get update
+chroot "$ROOTFS" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    -t trixie-backports "${BPO_PKGS[@]}"
 if [ -n "$USERSPACE_DIR" ]; then
     shopt -s nullglob
     DEBS=("$USERSPACE_DIR"/*.deb)
@@ -85,14 +93,12 @@ if [ -n "$USERSPACE_DIR" ]; then
 fi
 if [ -n "$MESA_DIR" ]; then
     # piano-mesa runtime packages: Debian's backported Mesa with the
-    # Adreno 830 patches. Built against trixie-backports, so that suite is
-    # enabled; the pin keeps a newer stock Mesa (without the patches, i.e.
-    # without the GPU) from replacing it on a later upgrade.
+    # Adreno 830 patches, built against trixie-backports (enabled above);
+    # the pin keeps a newer stock Mesa (without the patches, i.e. without
+    # the GPU) from replacing it on a later upgrade.
     shopt -s nullglob
     DEBS=("$MESA_DIR"/*.deb)
     [ "${#DEBS[@]}" -gt 0 ] || die "no Mesa packages in $MESA_DIR"
-    printf 'deb https://deb.debian.org/debian trixie-backports main\n' \
-        > "$ROOTFS/etc/apt/sources.list.d/trixie-backports.list"
     cat > "$ROOTFS/etc/apt/preferences.d/piano-mesa" <<'PIN'
 # Keep the piano-mesa build: stock Mesa lacks the Adreno 830 patches.
 Package: src:mesa
@@ -143,7 +149,7 @@ printf 'en_US.UTF-8 UTF-8\nzh_CN.UTF-8 UTF-8\n' > "$ROOTFS/etc/locale.gen"
 chroot "$ROOTFS" locale-gen
 printf 'LANG=en_US.UTF-8\n' > "$ROOTFS/etc/default/locale"
 chroot "$ROOTFS" glib-compile-schemas /usr/share/glib-2.0/schemas
-chroot "$ROOTFS" systemctl enable NetworkManager ssh bluetooth piano-usb piano-touch piano-radio piano-adsp piano-audio piano-video piano-keyboard piano-cpufreq piano-hostkeys piano-swapfile
+chroot "$ROOTFS" systemctl enable NetworkManager ssh bluetooth piano-usb piano-touch piano-radio piano-adsp piano-audio piano-video piano-camera piano-camerad piano-keyboard piano-cpufreq piano-hostkeys piano-swapfile
 chroot "$ROOTFS" systemctl set-default graphical.target
 ln -sf /usr/lib/systemd/system/gdm3.service "$ROOTFS/etc/systemd/system/display-manager.service"
 # Preserve the bootloader display: neither suspend nor blanking is recoverable yet.
