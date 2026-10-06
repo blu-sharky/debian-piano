@@ -21,13 +21,16 @@
 #include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <sys/sysmacros.h>
 #include <unistd.h>
 
@@ -1017,6 +1020,32 @@ static void loopback_event(struct cam *c)
 	}
 }
 
+/*
+ * systemd readiness (Type=notify): the loopback devices are capture
+ * devices from here on, so a session started afterwards finds them.
+ */
+static void notify_ready(void)
+{
+	const char *path = getenv("NOTIFY_SOCKET");
+	struct sockaddr_un sa = { .sun_family = AF_UNIX };
+	static const char msg[] = "READY=1";
+	socklen_t len;
+	int fd;
+
+	if (!path || (path[0] != '/' && path[0] != '@') ||
+	    strlen(path) >= sizeof(sa.sun_path))
+		return;
+	strcpy(sa.sun_path, path);
+	if (path[0] == '@')
+		sa.sun_path[0] = '\0';
+	len = offsetof(struct sockaddr_un, sun_path) + strlen(path);
+	fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+	if (fd < 0)
+		return;
+	sendto(fd, msg, sizeof(msg) - 1, 0, (struct sockaddr *)&sa, len);
+	close(fd);
+}
+
 static void on_signal(int sig)
 {
 	(void)sig;
@@ -1061,6 +1090,7 @@ int main(void)
 		return 1;
 	}
 	logmsg(NULL, "ready, %u camera(s)", ncams);
+	notify_ready();
 
 	while (!quit) {
 		struct pollfd pfd[2 * NUM_CAMS];

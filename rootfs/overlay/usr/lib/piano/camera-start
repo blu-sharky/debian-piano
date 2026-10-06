@@ -6,7 +6,7 @@
 # piano-touch, which loads the GPI DMA controllers. Nothing autoloads the
 # camera drivers (of: modaliases are skipped by 80-drivers.rules).
 #
-# piano-camerad (started after this unit) runs the sensors through the
+# piano-camerad (started early, independently) runs the sensors through the
 # TFE hardware ISP and feeds the v4l2loopback cameras applications use.
 # Like Iris, CAMSS needs a translated DMA domain under iommu.passthrough=1,
 # so its IOMMU group (the IFE stream alone) is switched to DMA before the
