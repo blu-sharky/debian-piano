@@ -25,6 +25,7 @@
  *     the upstream sm8750.dtsi shape (one 0x600 window, the shared GIC
  *     581 interrupt, an APPS->EBI1 vote through gem_noc/mc_virt and the
  *     upstream OPP table).  With QCOM_ICC_BWMON=m and icc-bwmon loaded
+ *
  *     through modules-load.d, the monitors vote for CPU memory
  *     bandwidth themselves; today the providers still sit at their
  *     initial INT_MAX votes, so the monitors change nothing yet — they
@@ -40,6 +41,32 @@
 		target-path = "/soc/ram@c3f0000";
 		__overlay__ {
 			compatible = "qcom,rpmh-stats-v4", "qcom,rpmh-stats";
+		};
+	};
+
+	/* Emergency shutdown at the stock hot level, for every CPU zone.
+	 * Without a critical trip the kernel only throttles; the orderly
+	 * poweroff at 125 degC complements the CPUCP/LMh hardware limit.
+	 */
+	fragment@351 {
+		target-path = "/soc/thermal-zones";
+		__overlay__ {
+			cpu-0-0-0 { trips { cpu-critical { temperature = <125000>; hysteresis = <0>; type = "critical"; }; }; };
+			cpu-0-0-1 { trips { cpu-critical { temperature = <125000>; hysteresis = <0>; type = "critical"; }; }; };
+			cpu-0-1-0 { trips { cpu-critical { temperature = <125000>; hysteresis = <0>; type = "critical"; }; }; };
+			cpu-0-1-1 { trips { cpu-critical { temperature = <125000>; hysteresis = <0>; type = "critical"; }; }; };
+			cpu-0-2-0 { trips { cpu-critical { temperature = <125000>; hysteresis = <0>; type = "critical"; }; }; };
+			cpu-0-2-1 { trips { cpu-critical { temperature = <125000>; hysteresis = <0>; type = "critical"; }; }; };
+			cpu-0-3-0 { trips { cpu-critical { temperature = <125000>; hysteresis = <0>; type = "critical"; }; }; };
+			cpu-0-3-1 { trips { cpu-critical { temperature = <125000>; hysteresis = <0>; type = "critical"; }; }; };
+			cpu-0-4-0 { trips { cpu-critical { temperature = <125000>; hysteresis = <0>; type = "critical"; }; }; };
+			cpu-0-4-1 { trips { cpu-critical { temperature = <125000>; hysteresis = <0>; type = "critical"; }; }; };
+			cpu-0-5-0 { trips { cpu-critical { temperature = <125000>; hysteresis = <0>; type = "critical"; }; }; };
+			cpu-0-5-1 { trips { cpu-critical { temperature = <125000>; hysteresis = <0>; type = "critical"; }; }; };
+			cpu-1-0-0 { trips { cpu-critical { temperature = <125000>; hysteresis = <0>; type = "critical"; }; }; };
+			cpu-1-0-1 { trips { cpu-critical { temperature = <125000>; hysteresis = <0>; type = "critical"; }; }; };
+			cpu-1-1-0 { trips { cpu-critical { temperature = <125000>; hysteresis = <0>; type = "critical"; }; }; };
+			cpu-1-1-1 { trips { cpu-critical { temperature = <125000>; hysteresis = <0>; type = "critical"; }; }; };
 		};
 	};
 };
