@@ -20,11 +20,6 @@
  *   - The SE runs at 1 MHz, as on stock, on GPI DMA (the QUP1 GPI streams
  *     are already matched for the touchscreen SPI).
  *   - Pins as in the stock nanosic_keyboard_mcu / mi_qupv3_se6_i2c states.
- *   - The cover-closed hall sensor (stock "keyboard front", gpio80) is a
- *     gpio-keys switch (SW_LID, active low).  The stock xiaomi_hall node
- *     that describes it has no mainline driver; closing the cover over
- *     the screen reports the lid state, which the piano-power-button
- *     service turns into backlight off/on.
  *
  * Nothing loads the keyboard driver on coldplug (of: modaliases are not
  * autoloaded); the piano-keyboard service does, after the touchscreen
@@ -34,7 +29,6 @@
 #include <dt-bindings/clock/qcom,sm8750-gcc.h>
 #include <dt-bindings/dma/qcom-gpi.h>
 #include <dt-bindings/gpio/gpio.h>
-#include <dt-bindings/input/linux-event-codes.h>
 #include <dt-bindings/interconnect/qcom,icc.h>
 #include <dt-bindings/interconnect/qcom,sm8750-rpmh.h>
 #include <dt-bindings/interrupt-controller/irq.h>
@@ -140,46 +134,6 @@
 				 * wait on; the driver never requests it.
 				 */
 				vdd-supply = <&vreg_l14b_3p3_ml>;
-			};
-		};
-	};
-
-	/* Cover-closed switch: the lid hall sensor on gpio80, as the stock
-	 * xiaomi_hall node reads it (the stock driver lives in vendor_dlkm;
-	 * its node stays driverless).  Active low: closed = asserted.
-	 * The input device is named after the parent label, "hall_lid".
-	 */
-	fragment@323 {
-		target-path = "/soc";
-		__overlay__ {
-			hall_lid_keys_ml: gpio-keys-hall-ml {
-				compatible = "gpio-keys";
-				label = "hall_lid";
-				pinctrl-names = "default";
-				pinctrl-0 = <&hall_lid_pins_ml>;
-
-				lid_hall {
-					label = "lid_hall";
-					gpios = <&piano_tlmm_ml 80 GPIO_ACTIVE_LOW>;
-					linux,input-type = <EV_SW>;
-					linux,code = <SW_LID>;
-					debounce-interval = <30>;
-					wakeup-source;
-				};
-			};
-		};
-	};
-
-	fragment@324 {
-		target-path = "/soc";
-		__overlay__ {
-			pinctrl@f100000 {
-				hall_lid_pins_ml: hall-lid-ml-state {
-					pins = "gpio80";
-					function = "gpio";
-					input-enable;
-					bias-pull-up;
-				};
 			};
 		};
 	};
