@@ -1,0 +1,45 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Power profile: sleep statistics, CPU thermal shutdown, CPU bandwidth
+ * monitors.  Builds on the camera profile; the image dtbo of the same
+ * revision uses this profile.
+ *
+ *   - The stock ram@c3f0000 node only carries the downstream
+ *     "qcom,rpmh-stats-v4" compatible, which the mainline qcom_stats
+ *     driver does not know, so there has been no visibility into the
+ *     low-power residencies at all.  The fragment appends the mainline
+ *     "qcom,rpmh-stats" compatible: same register window (0xc3f0000,
+ *     0x400 — the sm8550-class layout the driver expects: soc sleep
+ *     stats at +0x48, DDR stats at +0xb8, subsystem stats in SMEM), and
+ *     the stock qcom,qmp phandle for the DDR sync is left untouched (the
+ *     mainline aoss-qmp driver is bound to that node).  After
+ *     `modprobe qcom_stats` (loaded through modules-load.d) the counters
+ *     appear in /sys/kernel/debug/qcom_stats/.
+ *   - The stock CPU thermal zones (cpu-0-*, cpu-1-*) only carry passive
+ *     (95/105/120/135 degC) and hot (125 degC) trips; there is no
+ *     critical trip, so the kernel never shuts the board down in an
+ *     orderly fashion when the cooling devices lose the race — only the
+ *     CPUCP/LMh hardware limit remains.  Each zone gains a 125 degC
+ *     critical trip, at the stock hot level.
+ *   - The stock bwmon4 nodes at 0x240b3400/0x240b7400 have no mainline
+ *     driver; the CPU bandwidth monitors are re-stated next to them in
+ *     the upstream sm8750.dtsi shape (one 0x600 window, the shared GIC
+ *     581 interrupt, an APPS->EBI1 vote through gem_noc/mc_virt and the
+ *     upstream OPP table).  With QCOM_ICC_BWMON=m and icc-bwmon loaded
+ *     through modules-load.d, the monitors vote for CPU memory
+ *     bandwidth themselves; today the providers still sit at their
+ *     initial INT_MAX votes, so the monitors change nothing yet — they
+ *     are the precondition for ever letting the DDR/LLCC votes drop.
+ */
+#include "dtbo-piano-camera.dts"
+#include <dt-bindings/interconnect/qcom,icc.h>
+#include <dt-bindings/interconnect/qcom,sm8750-rpmh.h>
+#include <dt-bindings/interrupt-controller/arm-gic.h>
+
+/ {
+	fragment@350 {
+		target-path = "/soc/ram@c3f0000";
+		__overlay__ {
+			compatible = "qcom,rpmh-stats-v4", "qcom,rpmh-stats";
+		};
+	};
+};
