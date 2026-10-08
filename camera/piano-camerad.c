@@ -109,6 +109,8 @@ struct buf {
 	size_t len;
 };
 
+#define AF_HIST		64	/* sharpness samples kept per scan */
+
 struct cam {
 	const struct cam_cfg *cfg;
 	int loop_fd;
@@ -126,9 +128,14 @@ struct cam {
 	bool have_state;
 	/* autofocus: lens position range, scan state */
 	int af_min, af_max, af_pos;
-	enum { AF_OFF, AF_WAIT, AF_SCAN, AF_LOCKED } af_state;
-	int af_lo, af_hi, af_step, af_best_pos, af_settle, af_lost;
-	double af_best, af_lock;
+	enum { AF_OFF, AF_WAIT, AF_SCAN, AF_FINE, AF_VERIFY, AF_LOCKED } af_state;
+	int af_step, af_dir, af_origin, af_drops, af_best_pos, af_settle;
+	int af_lost, af_n;
+	bool af_reversed;
+	double af_best, af_floor, af_lock;
+	int af_fine[3];			/* fine pass positions */
+	int af_hist_pos[AF_HIST];	/* samples of the current scan */
+	double af_hist_val[AF_HIST];
 };
 
 static struct cam cams[NUM_CAMS];
@@ -136,6 +143,7 @@ static volatile sig_atomic_t quit;
 static double srgb_lin[256];
 static int saturation = DEF_SATURATION * SAT_UNITY / 100;
 static int contrast = DEF_CONTRAST;
+static int af_settle_frames;
 
 static void logmsg(const struct cam *c, const char *fmt, ...)
 {
@@ -621,8 +629,17 @@ static int cam_start(struct cam *c)
 			c->vcm_fd = topo_open_devnode(&tp, lens->id);
 		if (c->vcm_fd >= 0 &&
 		    ctrl_range(c->vcm_fd, V4L2_CID_FOCUS_ABSOLUTE,
-			       &c->af_min, &c->af_max) == 0)
+			       &c->af_min, &c->af_max) == 0) {
+			struct v4l2_control ctl = {
+				.id = V4L2_CID_FOCUS_ABSOLUTE,
+			};
+
+			/* the climb starts where the lens rests */
+			if (xioctl(c->vcm_fd, VIDIOC_G_CTRL, &ctl) == 0)
+				c->af_pos = ctl.value;
+			c->af_settle = 0;
 			c->af_state = AF_WAIT;
+		}
 	}
 
 	if (route(&tp, phy, 1, csid, 0) < 0 || route(&tp, csid, 4, vfe, 0) < 0) {
@@ -865,9 +882,19 @@ static void control_update(struct cam *c, const struct stats *s)
 /* ------------------------------------------------------------------ */
 /* contrast-detect autofocus                                          */
 
+/*
+ * Hill climb in the manner of the stock fine search: start where the lens
+ * is, step towards the larger part of the range, keep going while the
+ * sharpness rises and stop once it has fallen twice below the peak (or
+ * turn round once if the first direction only ever fell). The peak is
+ * then refined by a parabola through the best sample and its neighbours,
+ * so no second, finer sweep is needed.
+ */
 #define AF_START	15	/* frames for auto exposure to settle first */
-#define AF_SETTLE	3	/* frames from a lens move to its first frame */
-#define AF_COARSE	16	/* steps over the full range */
+#define AF_SETTLE	2	/* frames to drop after a lens move (default) */
+#define AF_STEPS	16	/* climb step: the range in this many steps */
+#define AF_DROP		0.85	/* below this share of the peak: past it */
+#define AF_RISE		1.6	/* a peak rises this far above the scan floor */
 #define AF_LOST		0.6	/* relock below this share of the lock sharpness */
 #define AF_LOST_FRAMES	20
 
@@ -892,67 +919,187 @@ static double af_sharpness(const struct cam *c, const uint8_t *y,
 	return luma ? (double)grad / luma : 0;
 }
 
-static void af_move(struct cam *c, int pos)
+static int af_clamp(const struct cam *c, int pos)
 {
-	c->af_pos = pos < c->af_min ? c->af_min :
-		    pos > c->af_max ? c->af_max : pos;
-	ctrl_set(c->vcm_fd, V4L2_CID_FOCUS_ABSOLUTE, c->af_pos);
-	c->af_settle = AF_SETTLE;
+	return pos < c->af_min ? c->af_min : pos > c->af_max ? c->af_max : pos;
 }
 
-static void af_scan(struct cam *c, int lo, int hi, int step)
+static void af_move(struct cam *c, int pos)
 {
-	c->af_lo = lo < c->af_min ? c->af_min : lo;
-	c->af_hi = hi > c->af_max ? c->af_max : hi;
-	c->af_step = step > 0 ? step : 1;
+	pos = af_clamp(c, pos);
+	if (pos != c->af_pos) {
+		c->af_pos = pos;
+		ctrl_set(c->vcm_fd, V4L2_CID_FOCUS_ABSOLUTE, pos);
+		c->af_settle = af_settle_frames;
+	}
+}
+
+static void af_scan(struct cam *c)
+{
+	int mid = (c->af_min + c->af_max) / 2;
+
+	c->af_step = (c->af_max - c->af_min) / AF_STEPS;
+	if (c->af_step < 1)
+		c->af_step = 1;
+	c->af_dir = c->af_pos <= mid ? 1 : -1;
+	c->af_origin = c->af_pos;
+	c->af_reversed = false;
+	c->af_drops = 0;
+	c->af_n = 0;
 	c->af_best = -1;
+	c->af_floor = -1;
 	c->af_state = AF_SCAN;
-	af_move(c, c->af_lo);
+	/* the first sample is where the lens already is */
+	af_move(c, c->af_pos);
+}
+
+/* vertex of the parabola through the best sample and its neighbours */
+static int af_peak(const struct cam *c)
+{
+	int b = c->af_best_pos, l = -1, r = -1;
+	double x0, x1 = b, x2, y0, y1 = c->af_best, y2, d;
+
+	for (int i = 0; i < c->af_n; i++) {
+		if (c->af_hist_pos[i] < b &&
+		    (l < 0 || c->af_hist_pos[i] > c->af_hist_pos[l]))
+			l = i;
+		if (c->af_hist_pos[i] > b &&
+		    (r < 0 || c->af_hist_pos[i] < c->af_hist_pos[r]))
+			r = i;
+	}
+	if (l < 0 || r < 0)
+		return b;
+	x0 = c->af_hist_pos[l];
+	y0 = c->af_hist_val[l];
+	x2 = c->af_hist_pos[r];
+	y2 = c->af_hist_val[r];
+	d = (x0 - x1) * (x0 - x2) * (x1 - x2);
+	if (d == 0)
+		return b;
+	{
+		double A = (x2 * (y1 - y0) + x1 * (y0 - y2) + x0 * (y2 - y1)) / d;
+		double B = (x2 * x2 * (y0 - y1) + x1 * x1 * (y2 - y0) +
+			    x0 * x0 * (y1 - y2)) / d;
+		double v;
+
+		if (A >= 0)	/* not a maximum */
+			return b;
+		v = -B / (2 * A);
+		if (v < x0)
+			v = x0;
+		if (v > x2)
+			v = x2;
+		return (int)lround(v);
+	}
+}
+
+/* one sharpness sample at the current lens position */
+static void af_feed(struct cam *c, double sh)
+{
+	int next;
+
+	switch (c->af_state) {
+	case AF_LOCKED:
+		c->af_lost = sh < AF_LOST * c->af_lock ? c->af_lost + 1 : 0;
+		if (c->af_lost >= AF_LOST_FRAMES)
+			af_scan(c);
+		return;
+	case AF_VERIFY:
+		/* a parabola that missed: fall back to the best sample */
+		if (sh < AF_DROP * c->af_best && c->af_pos != c->af_best_pos) {
+			af_move(c, c->af_best_pos);
+			return;
+		}
+		c->af_lock = sh;
+		c->af_lost = 0;
+		c->af_state = AF_LOCKED;
+		logmsg(c, "focus %d after %d steps (sharpness %.2f)",
+		       c->af_pos, c->af_n, sh);
+		return;
+	case AF_SCAN:
+	case AF_FINE:
+		break;
+	default:
+		return;
+	}
+
+	if (c->af_n < AF_HIST) {
+		c->af_hist_pos[c->af_n] = c->af_pos;
+		c->af_hist_val[c->af_n] = sh;
+		c->af_n++;
+	}
+	if (sh > c->af_best) {
+		c->af_best = sh;
+		c->af_best_pos = c->af_pos;
+		c->af_drops = 0;
+	} else if (sh < AF_DROP * c->af_best) {
+		c->af_drops++;
+	}
+	if (c->af_floor < 0 || sh < c->af_floor)
+		c->af_floor = sh;
+
+	if (c->af_state == AF_FINE) {
+		/* three samples around the coarse estimate */
+		for (int i = 0; i < 3; i++) {
+			if (c->af_fine[i] < 0)
+				continue;
+			next = c->af_fine[i];
+			c->af_fine[i] = -1;
+			af_move(c, next);
+			if (c->af_pos != next || c->af_settle)
+				return;
+			/* already there (clamped): sampled */
+		}
+		af_move(c, af_peak(c));
+		c->af_state = AF_VERIFY;
+		return;
+	}
+
+	next = c->af_pos + c->af_dir * c->af_step;
+	if (next == af_clamp(c, next) && c->af_n < AF_HIST &&
+	    !(c->af_drops >= 2 && c->af_best > AF_RISE * c->af_floor)) {
+		af_move(c, next);
+		return;
+	}
+	/*
+	 * Past a peak, or at the end of the range. Turn round once if the
+	 * first direction never rose above the start (the peak lies the
+	 * other way) or found nothing but a flat curve.
+	 */
+	if (!c->af_reversed && (c->af_best_pos == c->af_origin ||
+				c->af_best <= AF_RISE * c->af_floor)) {
+		next = c->af_origin - c->af_dir * c->af_step;
+		c->af_dir = -c->af_dir;
+		c->af_reversed = true;
+		c->af_drops = 0;
+		if (next == af_clamp(c, next)) {
+			af_move(c, next);
+			return;
+		}
+	}
+	/* refine: a parabola, then a fine pass at a quarter step around it */
+	next = af_peak(c);
+	c->af_fine[0] = af_clamp(c, next - c->af_step / 4);
+	c->af_fine[1] = af_clamp(c, next + c->af_step / 4);
+	c->af_fine[2] = -1;
+	c->af_state = AF_FINE;
+	af_move(c, next);
 }
 
 static void af_update(struct cam *c, const uint8_t *y, unsigned int stride)
 {
-	double sh;
-	int coarse = (c->af_max - c->af_min) / AF_COARSE;
-
 	if (c->af_state == AF_OFF)
 		return;
 	if (c->af_state == AF_WAIT) {
 		if (c->frames >= AF_START)
-			af_scan(c, c->af_min, c->af_max, coarse);
+			af_scan(c);
 		return;
 	}
-	if (c->af_settle && c->af_settle--)
-		return;
-
-	sh = af_sharpness(c, y, stride);
-	if (c->af_state == AF_LOCKED) {
-		c->af_lost = sh < AF_LOST * c->af_lock ? c->af_lost + 1 : 0;
-		if (c->af_lost >= AF_LOST_FRAMES)
-			af_scan(c, c->af_min, c->af_max, coarse);
+	if (c->af_settle > 0) {
+		c->af_settle--;
 		return;
 	}
-
-	if (sh > c->af_best) {
-		c->af_best = sh;
-		c->af_best_pos = c->af_pos;
-	}
-	if (c->af_pos + c->af_step <= c->af_hi) {
-		af_move(c, c->af_pos + c->af_step);
-		return;
-	}
-	if (c->af_step > coarse / 4 && coarse >= 4) {
-		/* fine pass around the coarse peak */
-		af_scan(c, c->af_best_pos - c->af_step,
-			c->af_best_pos + c->af_step, coarse / 4);
-		return;
-	}
-	af_move(c, c->af_best_pos);
-	c->af_settle = 0;
-	c->af_lock = c->af_best;
-	c->af_lost = 0;
-	c->af_state = AF_LOCKED;
-	logmsg(c, "focus %d (sharpness %.1f)", c->af_pos, c->af_best);
+	af_feed(c, af_sharpness(c, y, stride));
 }
 
 static void cam_frame(struct cam *c)
@@ -1066,6 +1213,9 @@ int main(void)
 			     SAT_UNITY / 100;
 	if (getenv("PIANO_CAMERA_CONTRAST"))
 		contrast = atoi(getenv("PIANO_CAMERA_CONTRAST"));
+	af_settle_frames = AF_SETTLE;
+	if (getenv("PIANO_CAMERA_AF_SETTLE"))
+		af_settle_frames = atoi(getenv("PIANO_CAMERA_AF_SETTLE"));
 
 	for (int i = 0; i < 256; i++) {
 		double v = i / 255.0;
