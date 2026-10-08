@@ -166,12 +166,15 @@
 		__overlay__ {
 			piano_hall_ml: piano-hall-ml {
 				compatible = "gpio-keys";
+				/* Names the input device the power-button service opens */
+				label = "hall_lid";
 
 				lid-switch {
 					label = "lid_hall";
 					gpios = <&piano_tlmm_ml 80 GPIO_ACTIVE_LOW>;
 					linux,input-type = <EV_SW>;
 					linux,code = <SW_LID>;
+					debounce-interval = <30>;
 					wakeup-source;
 				};
 			};
