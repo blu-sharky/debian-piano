@@ -1,13 +1,19 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: GPL-2.0-only
-"""Android-style power button for the GNOME session on piano.
+"""Android-style power button and keyboard-cover switch for the piano session.
 
-Short press toggles the panel backlight; holding the key for LONG_PRESS
-seconds opens the GNOME power-off/restart dialog.  The key is grabbed
-(EVIOCGRAB) so neither logind nor gnome-settings-daemon acts on it:
-gsd powers the system off on every press because systemd detects the
+Short press of the power key toggles the panel backlight; holding the key
+for LONG_PRESS seconds opens the GNOME power-off/restart dialog.  The key
+is grabbed (EVIOCGRAB) so neither logind nor gnome-settings-daemon acts on
+it: gsd powers the system off on every press because systemd detects the
 hypervisor and reports the chassis as "vm", and s2idle suspend is not
 recoverable on piano yet.
+
+Closing the official keyboard cover over the screen (the lid hall switch,
+gpio80 behind gpio-keys) turns the backlight off; opening it restores the
+previous level.  The switch device is not grabbed: logind's lid handling
+is already disabled (HandleLidSwitch*=ignore) and the state stays visible
+to future tablet-mode handling.
 
 The screen is "turned off" through the backlight only.  A real DPMS off
 of the native display leaves the DSI host erroring on re-enable, so the
@@ -23,19 +29,51 @@ import sys
 import time
 
 KEY_NAME = "pmic_pwrkey"
+LID_NAME = "hall_lid"
 KEY_POWER = 116
 EV_KEY = 1
+EV_SW = 5
+SW_LID = 0
 LONG_PRESS = 0.8
 EVIOCGRAB = 0x40044590
+# _IOC(_IOC_READ, 'E', 0x1b, 4): the switch state bitmap on start-up
+EVIOCGSW = (2 << 30) | (4 << 16) | (0x45 << 8) | 0x1B
 EVENT = struct.Struct("llHHi")
 
 
-def find_device():
+def find_device(name):
     for path in glob.glob("/sys/class/input/event*/device/name"):
         with open(path) as f:
-            if f.read().strip() == KEY_NAME:
+            if f.read().strip() == name:
                 return "/dev/input/" + path.split("/")[4]
     return None
+
+
+def open_key():
+    dev = None
+    while dev is None:
+        dev = find_device(KEY_NAME)
+        if dev is None:
+            time.sleep(2)
+    return dev, os.open(dev, os.O_RDONLY)
+
+
+def open_lid(screen):
+    """Open the lid switch and apply its current state."""
+    dev = None
+    while dev is None:
+        dev = find_device(LID_NAME)
+        if dev is None:
+            time.sleep(2)
+    fd = os.open(dev, os.O_RDONLY)
+    sw = bytearray(4)
+    try:
+        fcntl.ioctl(fd, EVIOCGSW, sw, True)
+        if sw[0] & (1 << SW_LID):
+            screen.off()
+    except OSError:
+        pass
+    return fd
 
 
 def find_backlight():
@@ -69,13 +107,20 @@ class Screen:
     def __init__(self):
         self.saved = None
 
-    def toggle(self):
+    def off(self):
         bl = find_backlight()
         if bl is None:
             return
         if self.saved is None:
             self.saved = brightness(bl) or 1
             set_brightness(bl, 0)
+
+    def toggle(self):
+        bl = find_backlight()
+        if bl is None:
+            return
+        if self.saved is None:
+            self.off()
         else:
             self.wake()
 
@@ -87,40 +132,42 @@ class Screen:
 
 
 def main():
-    dev = None
-    while dev is None:
-        dev = find_device()
-        if dev is None:
-            time.sleep(2)
-    fd = os.open(dev, os.O_RDONLY)
+    keydev, keyfd = open_key()
     try:
-        fcntl.ioctl(fd, EVIOCGRAB, 1)
+        fcntl.ioctl(keyfd, EVIOCGRAB, 1)
     except OSError as e:
-        print(f"power-button: cannot grab {dev}: {e}", file=sys.stderr)
+        print(f"power-button: cannot grab {keydev}: {e}", file=sys.stderr)
 
     screen = Screen()
+    lidfd = open_lid(screen)
+
     pressed_at = None
     while True:
         timeout = None
         if pressed_at is not None:
             timeout = max(0.0, pressed_at + LONG_PRESS - time.monotonic())
-        ready, _, _ = select.select([fd], [], [], timeout)
+        ready, _, _ = select.select([keyfd, lidfd], [], [], timeout)
         if not ready:
             # Held long enough: show the dialog without waiting for release.
             pressed_at = None
             screen.wake()
             power_dialog()
             continue
-        data = os.read(fd, EVENT.size * 64)
-        for off in range(0, len(data) - EVENT.size + 1, EVENT.size):
-            _, _, etype, code, value = EVENT.unpack_from(data, off)
-            if etype != EV_KEY or code != KEY_POWER:
-                continue
-            if value == 1:
-                pressed_at = time.monotonic()
-            elif value == 0 and pressed_at is not None:
-                pressed_at = None
-                screen.toggle()
+        for fd in ready:
+            data = os.read(fd, EVENT.size * 64)
+            for off in range(0, len(data) - EVENT.size + 1, EVENT.size):
+                _, _, etype, code, value = EVENT.unpack_from(data, off)
+                if fd == keyfd and (etype, code) == (EV_KEY, KEY_POWER):
+                    if value == 1:
+                        pressed_at = time.monotonic()
+                    elif value == 0 and pressed_at is not None:
+                        pressed_at = None
+                        screen.toggle()
+                elif fd == lidfd and (etype, code) == (EV_SW, SW_LID):
+                    if value:
+                        screen.off()
+                    else:
+                        screen.wake()
 
 
 if __name__ == "__main__":
